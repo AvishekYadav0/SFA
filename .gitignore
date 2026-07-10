@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.npm
+
+# Environment files - NEVER push these
+.env
+.env.local
+.env.production
+.env.development
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Vite cache
+.vite/
+/tmp/vite-sfa-cache/
