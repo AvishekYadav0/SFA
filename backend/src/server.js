@@ -9,8 +9,12 @@ const app = express();
 connectDB();
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'https://test.alvn.cc',
+  'http://localhost:5173',
+];
 app.use(cors({
-  origin: true,
+  origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -38,12 +42,13 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'SFA API is running', time: new Date() });
 });
 
-// ── Serve React frontend from public_html ────────────────────────────────────
-const frontendDist = process.env.FRONTEND_DIST || path.join(__dirname, '../../frontend/dist');
-app.use(express.static(frontendDist));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendDist, 'index.html'));
-});
+// ── Serve React frontend (only when FRONTEND_DIST is set) ───────────────────
+if (process.env.FRONTEND_DIST) {
+  app.use(express.static(process.env.FRONTEND_DIST));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(process.env.FRONTEND_DIST, 'index.html'));
+  });
+}
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
