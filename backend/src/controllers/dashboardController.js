@@ -127,7 +127,7 @@ exports.getDashboard = async (req, res) => {
       { $sort: { totalSales: -1 } },
       { $limit: 5 },
       { $lookup: { from: 'salespersons', localField: '_id', foreignField: '_id', as: 'sp' } },
-      { $unwind: { path: '$sp', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$sp', preserveNullAndEmptyArrays: true } },
     ]);
     const topStaff = topStaffRaw.map(t => ({
       name:       t.sp?.fullName || 'Unknown',
