@@ -1,13 +1,8 @@
 import axios from 'axios';
 
-// In production (ePanel), frontend and backend are on same domain
-// In dev, Vite proxy forwards /api → localhost:8000
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const baseURL = import.meta.env.VITE_API_URL || '/api';
 
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 30000,
-});
+const api = axios.create({ baseURL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');

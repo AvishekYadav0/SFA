@@ -92,7 +92,7 @@ export default function AdminRegister() {
                   <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     {...register('name', { required: 'Please enter your full name' })}
-                    placeholder="e.g. John Doe"
+                    placeholder="Enter Your Name..."
                     className="input pl-10 bg-white/90"
                     autoComplete="name"
                   />
@@ -128,7 +128,7 @@ export default function AdminRegister() {
                     pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email address' },
                   })}
                   type="email"
-                  placeholder="e.g. john@yourcompany.com"
+                  placeholder="Enter Your Company Email..."
                   className="input pl-10 bg-white/90"
                   autoComplete="email"
                 />
