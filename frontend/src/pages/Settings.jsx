@@ -91,6 +91,8 @@ function CreateStaffModal({ open, onClose, defaultProvince, onSuccess }) {
       onClose();
       onSuccess();
     } catch (err) {
+      // Log the real error so a silent/unexpected failure is visible in devtools
+      console.error('createStaff failed:', err);
       toast.error(err.response?.data?.message || 'Failed to create staff');
     }
   };
@@ -178,6 +180,7 @@ function EditStaffModal({ open, onClose, staff, onSuccess }) {
       onClose();
       onSuccess();
     } catch (err) {
+      console.error('update staff failed:', err);
       toast.error(err.response?.data?.message || 'Failed to update');
     }
   };
@@ -239,6 +242,7 @@ function ResetPasswordModal({ open, onClose, staff, onSuccess }) {
       onClose();
       onSuccess();
     } catch (err) {
+      console.error('resetPassword failed:', err);
       toast.error(err.response?.data?.message || 'Failed to reset password');
     }
   };
@@ -288,7 +292,7 @@ export default function Settings() {
     try {
       const res = await userService.getAll();
       setUsers(res.data.data);
-    } catch { toast.error('Failed to load users'); }
+    } catch (err) { console.error('getAll users failed:', err); toast.error('Failed to load users'); }
     finally { setLoading(false); }
   };
 
