@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { orderService, liftingService, collectionService } from '../services';
+import { orderService, liftingService, collectionService, salespersonService } from '../services';
 import { formatCurrency, formatDate, StatusBadge } from '../components/common/index.jsx';
 import { Skeleton } from '../components/common/Spinner';
 import {
   FiClipboard, FiTruck, FiDollarSign, FiPlus,
-  FiUser, FiMapPin, FiBriefcase, FiAlertCircle
+  FiUser, FiMapPin, FiBriefcase, FiAlertCircle, FiUsers
 } from 'react-icons/fi';
 
 const QuickCard = ({ icon: Icon, label, count, color, bg, onClick }) => (
@@ -27,6 +27,7 @@ export default function StaffDashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ orders: 0, lifting: 0, collections: 0, pendingOrders: 0 });
   const [recentOrders, setRecentOrders] = useState([]);
+  const [salespersons, setSalespersons] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,9 +35,11 @@ export default function StaffDashboard() {
       orderService.getAll({ limit: 5 }),
       liftingService.getAll({ limit: 1 }),
       collectionService.getAll({ limit: 1 }),
-    ]).then(([ordersRes, liftingRes, collRes]) => {
+      salespersonService.getAll({ limit: 1000 }),
+    ]).then(([ordersRes, liftingRes, collRes, spRes]) => {
       const orders = ordersRes.data.data || [];
       setRecentOrders(orders.slice(0, 5));
+      setSalespersons(spRes.data.data || []);
       setStats({
         orders: ordersRes.data.total || 0,
         lifting: liftingRes.data.total || 0,
@@ -82,13 +85,15 @@ export default function StaffDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <QuickCard icon={FiClipboard} label="My Orders" count={stats.orders}
           color="text-white" bg="bg-blue-600" onClick={() => navigate('/orders')} />
         <QuickCard icon={FiTruck} label="Lifting Plans" count={stats.lifting}
           color="text-white" bg="bg-indigo-500" onClick={() => navigate('/lifting')} />
         <QuickCard icon={FiDollarSign} label="Collection Plans" count={stats.collections}
           color="text-white" bg="bg-emerald-500" onClick={() => navigate('/collections')} />
+        <QuickCard icon={FiUsers} label="My Salespersons" count={salespersons.length}
+          color="text-white" bg="bg-violet-500" onClick={() => navigate('/salespersons')} />
       </div>
 
       {/* Pending alert */}
@@ -159,6 +164,50 @@ export default function StaffDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Salespersons */}
+      <div className="card p-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h2 className="font-semibold text-slate-900 dark:text-white">My Salespersons</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{salespersons.length} assigned to your province</p>
+          </div>
+          <button onClick={() => navigate('/salespersons')} className="text-sm text-blue-600 hover:text-blue-700 font-medium">View all →</button>
+        </div>
+        {salespersons.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+            <FiUsers className="text-4xl mb-2 opacity-40" />
+            <p className="text-sm">No salespersons assigned to your province yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr><th>Employee ID</th><th>Full Name</th><th>Phone</th><th>Area</th><th>Designation</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {salespersons.slice(0, 5).map(sp => (
+                  <tr key={sp._id}>
+                    <td className="font-medium text-blue-600">{sp.employeeId}</td>
+                    <td className="font-medium">{sp.fullName}</td>
+                    <td className="text-slate-500">{sp.phone}</td>
+                    <td className="text-slate-500">{sp.area}</td>
+                    <td><span className="badge-info">{sp.designation}</span></td>
+                    <td><StatusBadge status={sp.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {salespersons.length > 5 && (
+              <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-700">
+                <button onClick={() => navigate('/salespersons')} className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                  +{salespersons.length - 5} more salespersons →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
