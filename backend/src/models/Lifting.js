@@ -21,6 +21,9 @@ const liftingSchema = new mongoose.Schema({
   createdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
+liftingSchema.index({ staffId: 1, month: 1, year: 1 });
+liftingSchema.index({ order: 1 });
+
 liftingSchema.pre('save', function (next) {
   this.totalLifted       = this.week1 + this.week2 + this.week3 + this.week4;
   this.remainingQuantity = this.orderedQuantity - this.totalLifted;

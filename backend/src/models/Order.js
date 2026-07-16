@@ -31,6 +31,11 @@ const orderSchema = new mongoose.Schema({
   createdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
+orderSchema.index({ date: -1 });
+orderSchema.index({ salesperson: 1, date: -1 });
+orderSchema.index({ staffId: 1, date: -1 });
+orderSchema.index({ status: 1 });
+
 orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
     const count = await mongoose.model('Order').countDocuments();

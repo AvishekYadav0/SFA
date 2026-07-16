@@ -20,6 +20,9 @@ const collectionSchema = new mongoose.Schema({
   createdBy:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
+collectionSchema.index({ staffId: 1, month: 1, year: 1 });
+collectionSchema.index({ dealer: 1 });
+
 collectionSchema.pre('save', function (next) {
   this.totalDue        = this.openingBalance + this.currentOrderAmount;
   this.totalCollection = this.week1 + this.week2 + this.week3 + this.week4;

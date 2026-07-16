@@ -1,23 +1,25 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Spinner } from './components/common/Spinner';
-import Landing from './pages/Landing';
-import Login from './pages/Login';
-import AdminRegister from './pages/AdminRegister';
-import Dashboard from './pages/Dashboard';
-import StaffDashboard from './pages/StaffDashboard';
-import Salespersons from './pages/Salespersons';
-import Dealers from './pages/Dealers';
-import Products from './pages/Products';
-import Orders from './pages/Orders';
-import Lifting from './pages/Lifting';
-import Collections from './pages/Collections';
-import Reports from './pages/Reports';
-import Profile from './pages/Profile';
-import Settings from './pages/Settings';
+
+const Landing       = lazy(() => import('./pages/Landing'));
+const Login         = lazy(() => import('./pages/Login'));
+const AdminRegister = lazy(() => import('./pages/AdminRegister'));
+const Dashboard     = lazy(() => import('./pages/Dashboard'));
+const StaffDashboard= lazy(() => import('./pages/StaffDashboard'));
+const Salespersons  = lazy(() => import('./pages/Salespersons'));
+const Dealers       = lazy(() => import('./pages/Dealers'));
+const Products      = lazy(() => import('./pages/Products'));
+const Orders        = lazy(() => import('./pages/Orders'));
+const Lifting       = lazy(() => import('./pages/Lifting'));
+const Collections   = lazy(() => import('./pages/Collections'));
+const Reports       = lazy(() => import('./pages/Reports'));
+const Profile       = lazy(() => import('./pages/Profile'));
+const Settings      = lazy(() => import('./pages/Settings'));
 
 // Admin-only route guard
 const AdminRoute = ({ children }) => {
@@ -43,7 +45,14 @@ const AppRoutes = () => {
     );
   }
 
+  const fallback = (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <Spinner size="lg" />
+    </div>
+  );
+
   return (
+    <Suspense fallback={fallback}>
     <Routes>
       {/* ── Public routes ── */}
       <Route path="/"
@@ -90,6 +99,7 @@ const AppRoutes = () => {
         element={<Navigate to={user ? '/dashboard' : '/'} replace />}
       />
     </Routes>
+    </Suspense>
   );
 };
 

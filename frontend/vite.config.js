@@ -7,6 +7,16 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor:  ['react', 'react-dom', 'react-router-dom'],
+          charts:  ['recharts'],
+          utils:   ['axios', 'date-fns'],
+          ui:      ['react-icons', 'react-hot-toast', 'react-hook-form'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

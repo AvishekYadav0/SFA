@@ -68,7 +68,18 @@ async function startServer() {
 
   for (const port of fallbackPorts) {
     if (await isPortFree(port)) {
-      app.listen(port, '0.0.0.0', () => console.log(`SFA Server running on port ${port}`));
+      app.listen(port, '0.0.0.0', () => {
+        console.log(`SFA Server running on port ${port}`);
+
+        // ── Keep-alive: ping self every 14 min to prevent free-tier sleep ──
+        if (process.env.SELF_URL) {
+          setInterval(() => {
+            require('http').get(`${process.env.SELF_URL}/api/health`, (res) => {
+              console.log(`Keep-alive ping: ${res.statusCode}`);
+            }).on('error', () => {});
+          }, 14 * 60 * 1000);
+        }
+      });
       return;
     }
   }
