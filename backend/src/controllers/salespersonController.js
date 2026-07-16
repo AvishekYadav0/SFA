@@ -16,6 +16,10 @@ exports.getAll = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const filter = buildQuery(req.query);
+  // Staff can only see salespersons in their assigned province
+  if (req.user.role === 'staff' && req.user.province) {
+    filter.province = req.user.province;
+  }
   const total = await Salesperson.countDocuments(filter);
   const data = await Salesperson.find(filter).sort('-createdAt').skip((page - 1) * limit).limit(limit);
   res.json({ success: true, data, total, page, pages: Math.ceil(total / limit) });
