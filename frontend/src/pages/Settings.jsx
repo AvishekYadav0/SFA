@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { userService } from '../services';
+import { userService, salespersonService } from '../services';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { PageLoader } from '../components/common/Spinner';
+import { StatusBadge } from '../components/common/index.jsx';
 import {
   FiPlus, FiEdit2, FiTrash2, FiKey, FiToggleLeft, FiToggleRight,
-  FiUser, FiMail, FiPhone, FiEye, FiEyeOff, FiArrowLeft, FiMapPin, FiUsers
+  FiUser, FiMail, FiPhone, FiEye, FiEyeOff, FiArrowLeft, FiMapPin, FiUsers, FiBriefcase
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -281,6 +282,7 @@ export default function Settings() {
   const [users, setUsers]                       = useState([]);
   const [loading, setLoading]                   = useState(true);
   const [selectedProvince, setSelectedProvince] = useState(null);
+  const [salespersons, setSalespersons]         = useState([]);
   const [createModal, setCreateModal]           = useState({ open: false, province: '' });
   const [editModal, setEditModal]               = useState({ open: false, staff: null });
   const [resetModal, setResetModal]             = useState({ open: false, staff: null });
@@ -310,6 +312,13 @@ export default function Settings() {
   const provinceStaff = selectedProvince
     ? staffUsers.filter(u => u.province === selectedProvince)
     : [];
+
+  useEffect(() => {
+    if (!selectedProvince) return;
+    salespersonService.getAll({ limit: 1000 })
+      .then(res => setSalespersons(res.data.data.filter(sp => sp.province === selectedProvince)))
+      .catch(() => {});
+  }, [selectedProvince]);
 
   const handleToggle = async (u) => {
     try {
@@ -371,6 +380,51 @@ export default function Settings() {
               onResetPass={(u) => setResetModal({ open: true, staff: u })}
               onToggle={handleToggle}
               onDelete={(id) => setConfirm({ open: true, id })} />
+          )}
+        </div>
+
+        {/* Salespersons under this province */}
+        <div className="card p-0">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
+            <FiBriefcase className={`${color.text} text-lg`} />
+            <div>
+              <h2 className="font-semibold text-slate-900 dark:text-white">Salespersons</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{salespersons.length} salesperson{salespersons.length !== 1 ? 's' : ''} in {selectedProvince}</p>
+            </div>
+          </div>
+          {salespersons.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <FiUsers className="text-3xl text-slate-300 mb-2" />
+              <p className="text-sm text-slate-500">No salespersons assigned to this province yet</p>
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr><th>#</th><th>Employee ID</th><th>Full Name</th><th>Phone</th><th>Area</th><th>Designation</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {salespersons.map((sp, i) => (
+                    <tr key={sp._id}>
+                      <td className="text-slate-400 text-xs">{i + 1}</td>
+                      <td className="font-medium text-blue-600">{sp.employeeId}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 ${color.icon} rounded-lg flex items-center justify-center text-xs font-bold text-white`}>
+                            {sp.fullName?.[0]?.toUpperCase()}
+                          </div>
+                          <span className="font-medium text-slate-900 dark:text-white">{sp.fullName}</span>
+                        </div>
+                      </td>
+                      <td className="text-slate-600 dark:text-slate-400">{sp.phone}</td>
+                      <td className="text-slate-600 dark:text-slate-400">{sp.area}</td>
+                      <td><span className="badge-info">{sp.designation}</span></td>
+                      <td><StatusBadge status={sp.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
