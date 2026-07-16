@@ -420,8 +420,8 @@ function Modals({ modal, closeModal, handleSubmit, onCreateStaff, onEditStaff, o
             <div>
               <label className="label">Password</label>
               <div className="relative">
-                <input {...register('password', { required: 'Required', minLength: { value: 6, message: 'Min 6 characters' } })}
-                  type={showPass ? 'text' : 'password'} className="input pr-10" placeholder="Min 6 characters" />
+                <input {...register('password', { required: 'Required', minLength: { value: 8, message: 'Min 8 characters' } })}
+                  type={showPass ? 'text' : 'password'} className="input pr-10" placeholder="Min 8 characters" />
                 <button type="button" onClick={() => setShowPass(p => !p)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                   {showPass ? <FiEyeOff /> : <FiEye />}

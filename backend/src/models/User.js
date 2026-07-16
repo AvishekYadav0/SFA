@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   phone:        { type: String, trim: true },
   companyName:  { type: String, trim: true },
   employeeId:   { type: String, trim: true },
-  province:     { type: String, enum: [...PROVINCES, null], default: null },
+  province:     { type: String, enum: [...PROVINCES, null, ''], default: null },
   district:     { type: String, trim: true },
   assignedArea: { type: String, trim: true },
   designation:  { type: String, enum: ['Marketing Staff', 'Sales Executive', 'Supervisor'], default: 'Marketing Staff' },
