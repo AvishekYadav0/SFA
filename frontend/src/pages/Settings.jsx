@@ -105,7 +105,7 @@ export default function Settings() {
     }
   };
 
-  const staffUsers = users.filter(u => u.role === 'marketing_staff');
+  const staffUsers = users.filter(u => u.role === 'staff');
   const adminUsers = users.filter(u => u.role === 'admin');
 
   return (

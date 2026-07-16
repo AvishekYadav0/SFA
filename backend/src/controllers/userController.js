@@ -34,7 +34,7 @@ exports.createStaff = async (req, res) => {
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
     const user = await User.create({
       name, email, password, phone,
-      role: 'marketing_staff',
+      role: 'staff',
       isActive: true,
       createdBy: req.user._id,
     });
