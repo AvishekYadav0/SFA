@@ -27,7 +27,7 @@ app.use('/api/users',       require('./routes/users'));
 app.use('/api/salespersons',require('./routes/salespersons'));
 app.use('/api/dealers',     require('./routes/dealers'));
 app.use('/api/products',    require('./routes/products'));
-app.use('/api/orders',      require('./routes/orders'));
+// app.use('/api/orders',      require('./routes/orders'));
 app.use('/api/lifting',     require('./routes/lifting'));
 app.use('/api/collections', require('./routes/collections'));
 app.use('/api/dashboard',   require('./routes/dashboard'));

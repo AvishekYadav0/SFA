@@ -140,9 +140,9 @@ const calcItem = (product, quantity) => {
     const def = orderDefs[i];
     const items = def.items.map(([pi, qty]) => calcItem(products[pi], qty));
     const totals = sumItems(items);
-    const count = await Order.countDocuments();
+    const seq = await require('./src/models/Counter').getNext('orderNumber');
     const order = await Order.create({
-      orderNumber: `ORD-${String(count + 1).padStart(5, '0')}`,
+      orderNumber: `ORD-${String(seq).padStart(5, '0')}`,
       date: new Date(year, def.month, Math.floor(Math.random() * 25) + 1),
       salesperson: salespersons[def.sp]._id,
       dealer: dealers[def.dealer]._id,

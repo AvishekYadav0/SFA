@@ -13,7 +13,7 @@ router.get('/product-wise',            c.productWiseSales);
 router.get('/province-wise',           c.provinceWiseSales);
 router.get('/monthly-sales',           c.monthlySalesReport);
 router.get('/target-achievement',      c.targetVsAchievement);
-router.get('/order-status',            c.orderStatusReport);
+// router.get('/order-status',            c.orderStatusReport);
 router.get('/collection-ageing',       c.collectionAgeing);
 router.get('/dealer-performance',      c.dealerPerformance);
 router.get('/dealer-hierarchy',        c.dealerHierarchy);
