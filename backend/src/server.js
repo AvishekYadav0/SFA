@@ -31,7 +31,10 @@ app.use('/api/orders',      require('./routes/orders'));
 app.use('/api/lifting',     require('./routes/lifting'));
 app.use('/api/collections', require('./routes/collections'));
 app.use('/api/dashboard',   require('./routes/dashboard'));
-app.use('/api/reports',     require('./routes/reports'));
+app.use('/api/reports',      require('./routes/reports'));
+app.use('/api/targets',      require('./routes/targets'));
+app.use('/api/soledealers',  require('./routes/soledealers'));
+app.use('/api/sales',        require('./routes/sales'));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

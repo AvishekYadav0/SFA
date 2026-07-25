@@ -129,16 +129,11 @@ export default function StaffDashboard() {
       <div className="card p-0">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
           <h2 className="font-semibold text-slate-900 dark:text-white">Recent Orders</h2>
-          <button onClick={() => navigate('/orders')}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium">View all →</button>
         </div>
         {recentOrders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <FiClipboard className="text-4xl mb-3" />
             <p className="text-sm">No orders yet.</p>
-            <button onClick={() => navigate('/orders')} className="btn-primary mt-4 text-sm">
-              <FiPlus /> Create First Order
-            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -3,11 +3,14 @@ import { useAuth } from '../../context/AuthContext';
 import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiTruck, FiDollarSign, FiBarChart2, FiUser, FiSettings,
-  FiLogOut, FiX, FiTrendingUp
+  FiLogOut, FiX, FiTrendingUp , FiPieChart
 } from 'react-icons/fi';
+
+
 
 const navItems = [
   { to: '/dashboard',    icon: FiGrid,       label: 'Dashboard' },
+  { to: '/sales',        icon: FiPieChart,   label: 'Sales' },              // <-- new
   { to: '/salespersons', icon: FiUsers,       label: 'Sales Persons',    roles: ['admin'] },
   { to: '/dealers',      icon: FiShoppingBag, label: 'Dealers',          roles: ['admin'] },
   { to: '/products',     icon: FiPackage,     label: 'Products',         roles: ['admin'] },

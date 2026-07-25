@@ -6,8 +6,8 @@ const productSchema = new mongoose.Schema({
   category: { type: String, required: true },
   sku: { type: String, required: true, unique: true },
   unit: { type: String, required: true },
-  rate: { type: Number, required: true },
-  excisePercent: { type: Number, default: 0 },
+  rate: { type: Number, required: true },           // company price per unit
+  excisePerUnit: { type: Number, default: 0 },
   vatPercent: { type: Number, default: 0 },
   stock: { type: Number, default: 0 },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },

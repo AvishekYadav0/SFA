@@ -45,12 +45,16 @@ export const productService = {
 };
 
 export const orderService = {
-  getAll:       (params) => api.get('/orders', { params }),
-  getOne:       (id)     => api.get(`/orders/${id}`),
-  create:       (data)   => api.post('/orders', data),
-  update:       (id, data) => api.put(`/orders/${id}`, data),
-  delete:       (id)     => api.delete(`/orders/${id}`),
-  updateStatus: (id, status) => api.put(`/orders/${id}/status`, { status }),
+  getAll:          (params)     => api.get('/orders', { params }),
+  getOne:          (id)         => api.get(`/orders/${id}`),
+  create:          (data)       => api.post('/orders', data),
+  update:          (id, data)   => api.put(`/orders/${id}`, data),
+  delete:          (id)         => api.delete(`/orders/${id}`),
+  updateStatus:    (id, status) => api.put(`/orders/${id}/status`, { status }),
+  markWarehouse:   (id, data)   => api.put(`/orders/${id}/warehouse`, data),
+  assignDelivery:  (id, data)   => api.put(`/orders/${id}/assign-delivery`, data),
+  markDelivered:   (id)         => api.put(`/orders/${id}/delivered`, {}),
+  recordPayment:   (id, data)   => api.put(`/orders/${id}/payment`, data),
 };
 
 export const liftingService = {
@@ -82,4 +86,17 @@ export const reportService = {
   productWise:            (params) => api.get('/reports/product-wise', { params }),
   provinceWise:           ()       => api.get('/reports/province-wise'),
   monthlySales:           (params) => api.get('/reports/monthly-sales', { params }),
+  targetAchievement:      (params) => api.get('/reports/target-achievement', { params }),
+  orderStatus:            (params) => api.get('/reports/order-status', { params }),
+  collectionAgeing:       (params) => api.get('/reports/collection-ageing', { params }),
+  dealerPerformance:      (params) => api.get('/reports/dealer-performance', { params }),
+  dealerHierarchy:        (params) => api.get('/reports/dealer-hierarchy', { params }),
+  staffHierarchy:         (params) => api.get('/reports/staff-hierarchy', { params }),
+};
+
+export const targetService = {
+  getAll:  (params) => api.get('/targets', { params }),
+  create:  (data)   => api.post('/targets', data),
+  update:  (id, data) => api.put(`/targets/${id}`, data),
+  delete:  (id)     => api.delete(`/targets/${id}`),
 };

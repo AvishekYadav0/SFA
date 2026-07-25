@@ -7,11 +7,26 @@ export { ConfirmDialog } from './ConfirmDialog';
 
 export const StatusBadge = ({ status }) => {
   const map = {
-    active: 'badge-success', inactive: 'badge-danger',
-    pending: 'badge-warning', approved: 'badge-success',
-    rejected: 'badge-danger', cancelled: 'badge-gray',
+    active:           'badge-success',
+    inactive:         'badge-danger',
+    pending:          'badge-warning',
+    approved:         'badge-info',
+    rejected:         'badge-danger',
+    cancelled:        'badge-gray',
+    warehouse:        'badge-warning',
+    out_for_delivery: 'badge-info',
+    delivered:        'badge-success',
+    completed:        'badge-success',
   };
-  return <span className={map[status] || 'badge-gray'} style={{ textTransform: 'capitalize' }}>{status}</span>;
+  const labels = {
+    out_for_delivery: 'Out for Delivery',
+    warehouse:        'In Warehouse',
+  };
+  return (
+    <span className={map[status] || 'badge-gray'} style={{ textTransform: 'capitalize' }}>
+      {labels[status] || status}
+    </span>
+  );
 };
 
 export const formatCurrency = (n) =>

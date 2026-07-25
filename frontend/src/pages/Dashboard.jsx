@@ -154,7 +154,7 @@ export default function Dashboard() {
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <StatCard icon={FiShoppingCart} label="Total Orders" color="#2563EB" onClick={() => navigate('/orders')} />
-          <StatCard icon={FiDollarSign} label="Total Sales" color="#22C55E" onClick={isAdmin ? () => navigate('/reports') : undefined} />
+          <StatCard icon={FiDollarSign} label="Total Sales" color="#22C55E" onClick={() => navigate('/sales')} />
           <StatCard icon={FiDollarSign} label="Total Collection" color="#3B82F6" onClick={() => navigate('/collections')} />
           <StatCard icon={FiAlertCircle} label="Outstanding" color="#EF4444" onClick={() => navigate('/collections')} />
           <StatCard icon={FiShoppingBag} label="Active Dealers" color="#14B8A6" onClick={isAdmin ? () => navigate('/dealers') : undefined} />

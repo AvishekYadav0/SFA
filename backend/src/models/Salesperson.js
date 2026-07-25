@@ -19,6 +19,7 @@ const salespersonSchema = new mongoose.Schema({
   area:        { type: String, required: true },
   designation: { type: String, required: true },
   status:      { type: String, enum: ['active', 'inactive'], default: 'active' },
+  reportsTo:   { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson', default: null },
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

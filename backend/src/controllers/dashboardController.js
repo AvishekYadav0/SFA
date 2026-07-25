@@ -37,10 +37,10 @@ exports.getDashboard = async (req, res) => {
       Lifting.countDocuments({ remainingQuantity: { $gt: 0 } }),
       Dealer.countDocuments({ status: 'active' }),
       Salesperson.countDocuments({ status: 'active' }),
-      Order.find({ status: 'approved' }).populate('dealer', 'dealerName province area'),
+      Order.find({ status: { $in: ['approved', 'completed'] } }).populate('dealer', 'dealerName province area'),
       Collection.find().populate('dealer', 'dealerName province area'),
       Order.aggregate([
-        { $match: { status: 'approved', date: { $gte: yearStart } } },
+        { $match: { status: { $in: ['approved', 'completed'] }, date: { $gte: yearStart } } },
         { $group: { _id: { month: { $month: '$date' } }, total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
         { $sort: { '_id.month': 1 } },
       ]),
@@ -108,7 +108,7 @@ exports.getDashboard = async (req, res) => {
 
     // ── Top products ─────────────────────────────────
     const topProducts = await Order.aggregate([
-      { $match: { status: 'approved' } },
+      { $match: { status: { $in: ['approved', 'completed'] } } },
       { $unwind: '$items' },
       { $group: {
         _id: '$items.product',
@@ -122,7 +122,7 @@ exports.getDashboard = async (req, res) => {
 
     // ── Top salespersons ─────────────────────────────
     const topStaffRaw = await Order.aggregate([
-      { $match: { status: 'approved' } },
+      { $match: { status: { $in: ['approved', 'completed'] } } },
       { $group: { _id: '$salesperson', totalSales: { $sum: '$grandTotal' }, orderCount: { $sum: 1 } } },
       { $sort: { totalSales: -1 } },
       { $limit: 5 },

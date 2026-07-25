@@ -35,14 +35,14 @@ const seed = async () => {
 
   // ── Products ─────────────────────────────────────
   const products = await Product.create([
-    { productName: 'Wai Wai Noodles',    brand: 'CG Foods',    category: 'Snacks',    sku: 'WW-001', unit: 'Carton', rate: 1200, excisePercent: 5,  vatPercent: 13, stock: 500, status: 'active', createdBy: admin._id },
-    { productName: 'Tuborg Beer 650ml',  brand: 'Carlsberg',   category: 'Beverages', sku: 'TB-001', unit: 'Carton', rate: 2400, excisePercent: 30, vatPercent: 13, stock: 300, status: 'active', createdBy: admin._id },
-    { productName: 'Coca Cola 1.5L',     brand: 'Coca Cola',   category: 'Beverages', sku: 'CC-001', unit: 'Carton', rate: 1800, excisePercent: 10, vatPercent: 13, stock: 400, status: 'active', createdBy: admin._id },
-    { productName: 'Lays Classic 26g',   brand: 'PepsiCo',     category: 'Snacks',    sku: 'LY-001', unit: 'Box',    rate: 960,  excisePercent: 5,  vatPercent: 13, stock: 600, status: 'active', createdBy: admin._id },
-    { productName: 'Surf Excel 1kg',     brand: 'Unilever',    category: 'Household', sku: 'SE-001', unit: 'Carton', rate: 3600, excisePercent: 0,  vatPercent: 13, stock: 200, status: 'active', createdBy: admin._id },
-    { productName: 'Dettol Soap 75g',    brand: 'Reckitt',     category: 'Personal Care', sku: 'DT-001', unit: 'Box', rate: 1440, excisePercent: 0, vatPercent: 13, stock: 350, status: 'active', createdBy: admin._id },
-    { productName: 'Dairy Milk 50g',     brand: 'Cadbury',     category: 'Snacks',    sku: 'DM-001', unit: 'Box',    rate: 2160, excisePercent: 5,  vatPercent: 13, stock: 250, status: 'active', createdBy: admin._id },
-    { productName: 'Sprite 500ml',       brand: 'Coca Cola',   category: 'Beverages', sku: 'SP-001', unit: 'Carton', rate: 1560, excisePercent: 10, vatPercent: 13, stock: 380, status: 'active', createdBy: admin._id },
+    { productName: 'Wai Wai Noodles',    brand: 'CG Foods',    category: 'Snacks',    sku: 'WW-001', unit: 'Carton', rate: 1200, excisePerUnit: 60,  vatPercent: 13, stock: 500, status: 'active', createdBy: admin._id },
+    { productName: 'Tuborg Beer 650ml',  brand: 'Carlsberg',   category: 'Beverages', sku: 'TB-001', unit: 'Carton', rate: 2400, excisePerUnit: 720, vatPercent: 13, stock: 300, status: 'active', createdBy: admin._id },
+    { productName: 'Coca Cola 1.5L',     brand: 'Coca Cola',   category: 'Beverages', sku: 'CC-001', unit: 'Carton', rate: 1800, excisePerUnit: 180, vatPercent: 13, stock: 400, status: 'active', createdBy: admin._id },
+    { productName: 'Lays Classic 26g',   brand: 'PepsiCo',     category: 'Snacks',    sku: 'LY-001', unit: 'Box',    rate: 960,  excisePerUnit: 48,  vatPercent: 13, stock: 600, status: 'active', createdBy: admin._id },
+    { productName: 'Surf Excel 1kg',     brand: 'Unilever',    category: 'Household', sku: 'SE-001', unit: 'Carton', rate: 3600, excisePerUnit: 0,   vatPercent: 13, stock: 200, status: 'active', createdBy: admin._id },
+    { productName: 'Dettol Soap 75g',    brand: 'Reckitt',     category: 'Personal Care', sku: 'DT-001', unit: 'Box', rate: 1440, excisePerUnit: 0,  vatPercent: 13, stock: 350, status: 'active', createdBy: admin._id },
+    { productName: 'Dairy Milk 50g',     brand: 'Cadbury',     category: 'Snacks',    sku: 'DM-001', unit: 'Box',    rate: 2160, excisePerUnit: 108, vatPercent: 13, stock: 250, status: 'active', createdBy: admin._id },
+    { productName: 'Sprite 500ml',       brand: 'Coca Cola',   category: 'Beverages', sku: 'SP-001', unit: 'Carton', rate: 1560, excisePerUnit: 156, vatPercent: 13, stock: 380, status: 'active', createdBy: admin._id },
   ]);
   console.log('📦 Products created');
 
@@ -84,13 +84,13 @@ const seed = async () => {
   console.log('🏪 Dealers created');
 
   // ── Helper: calculate order item ─────────────────
-  const calcItem = (product, quantity) => {
-    const basic   = quantity * product.rate;
-    const excise  = basic * (product.excisePercent / 100);
-    const vat     = (basic + excise) * (product.vatPercent / 100);
-    const total   = basic + excise + vat;
-    return { product: product._id, productName: product.productName, quantity, rate: product.rate, excisePercent: product.excisePercent, vatPercent: product.vatPercent, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: total };
-  };
+const calcItem = (product, quantity) => {
+  const basic  = quantity * product.rate;
+  const excise = quantity * product.excisePerUnit;
+  const vat    = (basic + excise) * (product.vatPercent / 100);
+  const total  = basic + excise + vat;
+  return { product: product._id, productName: product.productName, quantity, rate: product.rate, excisePerUnit: product.excisePerUnit, vatPercent: product.vatPercent, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: total };
+};
 
   const sumItems = (items) => items.reduce((a, i) => ({
     totalBasicAmount:  a.totalBasicAmount  + i.basicAmount,

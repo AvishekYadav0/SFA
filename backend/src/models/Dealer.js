@@ -12,6 +12,7 @@ const dealerSchema = new mongoose.Schema({
   openingBalance: { type: Number, default: 0 },
   creditLimit:    { type: Number, default: 0 },
   status:         { type: String, enum: ['active', 'inactive'], default: 'active' },
+  soleDealerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'SoleDealer', default: null },
   createdBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

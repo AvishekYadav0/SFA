@@ -59,6 +59,7 @@ exports.create = async (req, res) => {
       const vat    = (basic + excise) * (item.vatPercent / 100);
       return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
     });
+    delete req.body.orderNumber;
 
     const totals = items.reduce((acc, i) => ({
       totalBasicAmount:  acc.totalBasicAmount  + i.basicAmount,
@@ -80,6 +81,9 @@ exports.create = async (req, res) => {
 
     res.status(201).json({ success: true, data });
   } catch (err) {
+    if (err.code === 11000 && err.keyPattern?.orderNumber) {
+      return res.status(409).json({ success: false, message: 'Order number already exists. Please try again.' });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -97,6 +101,7 @@ exports.update = async (req, res) => {
       // Staff cannot change province
       delete req.body.province;
     }
+    delete req.body.orderNumber;
 
     if (req.body.items) {
       req.body.items = req.body.items.map(item => {
@@ -133,6 +138,47 @@ exports.remove = async (req, res) => {
 exports.updateStatus = async (req, res) => {
   try {
     const data = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.markWarehouse = async (req, res) => {
+  try {
+    const data = await Order.findByIdAndUpdate(req.params.id, { status: 'warehouse' }, { new: true });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.assignDelivery = async (req, res) => {
+  try {
+    const data = await Order.findByIdAndUpdate(req.params.id, { status: 'out_for_delivery' }, { new: true });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.markDelivered = async (req, res) => {
+  try {
+    const data = await Order.findByIdAndUpdate(req.params.id, { status: 'delivered' }, { new: true });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.recordPayment = async (req, res) => {
+  try {
+    const update = {
+      status: 'completed',
+      collectedAmount: req.body.collectedAmount ?? 0,
+      paymentMethod: req.body.paymentMethod || '',
+    };
+    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
