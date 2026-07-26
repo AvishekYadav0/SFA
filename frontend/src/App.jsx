@@ -20,7 +20,10 @@ const Lifting = lazy(() => import('./pages/Lifting'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Profile = lazy(() => import('./pages/Profile'));
-const Settings = lazy(() => import('./pages/Settings'));
+const DailyVisits = lazy(() => import('./pages/DailyVisits'));
+const Pipeline    = lazy(() => import('./pages/Pipeline'));
+const Settings    = lazy(() => import('./pages/Settings'));
+
 
 // Admin-only Route
 const AdminRoute = ({ children }) => {
@@ -118,8 +121,10 @@ const AppRoutes = () => {
           />
 
           {/* Staff + Admin */}
+          <Route path="/daily-visits" element={<DailyVisits />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/pipeline" element={<AdminRoute><Pipeline /></AdminRoute>} />
           <Route path="/lifting" element={<Lifting />} />
           <Route path="/collections" element={<Collections />} />
           <Route path="/profile" element={<Profile />} />

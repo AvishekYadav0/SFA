@@ -1,6 +1,7 @@
 const express = require('express');
-const router = express.Router();
-// const Order = require('../models/Order');
+const router  = express.Router();
+const Order   = require('../models/Order');
+const Sale    = require('../models/Sale');
 const { protect } = require('../middleware/auth');
 
 const NEPAL_PROVINCES = [
@@ -16,7 +17,7 @@ const NEPAL_PROVINCES = [
 const PAYMENT_METHODS = ['cash', 'bank', 'esewa', 'fonepay', 'cheque', 'credit'];
 
 // All active statuses (not rejected/cancelled) — show in sales
-const SALE_STATUSES = ['approved', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
+const SALE_STATUSES = ['pending', 'approved', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
 
 /**
  * GET /api/sales/by-province
@@ -26,6 +27,7 @@ const SALE_STATUSES = ['approved', 'warehouse', 'out_for_delivery', 'delivered',
 router.get('/by-province', protect, async (req, res) => {
   try {
     const { range = 'all', from, to } = req.query;
+    const Salesperson = require('../models/Salesperson');
 
     const baseMatch = { status: { $in: SALE_STATUSES } };
     if (req.user.role === 'staff') baseMatch.staffId = req.user._id;
@@ -43,19 +45,17 @@ router.get('/by-province', protect, async (req, res) => {
           totalSales:  { $sum: '$grandTotal' },
           collected:   { $sum: '$collectedAmount' },
           dealers:     { $addToSet: '$dealer' },
-          staff:       { $addToSet: '$staffId' },
         },
       },
       {
         $project: {
           _id: 0,
-          province:         '$_id',
-          totalOrders:      1,
-          totalSales:       1,
-          collected:        1,
-          outstanding:      { $subtract: ['$totalSales', '$collected'] },
-          dealerCount:      { $size: '$dealers' },
-          activeStaffCount: { $size: '$staff' },
+          province:    '$_id',
+          totalOrders: 1,
+          totalSales:  1,
+          collected:   1,
+          outstanding: { $subtract: ['$totalSales', '$collected'] },
+          dealerCount: { $size: '$dealers' },
           collectionRate: {
             $cond: [
               { $eq: ['$totalSales', 0] }, 0,
@@ -65,6 +65,14 @@ router.get('/by-province', protect, async (req, res) => {
         },
       },
     ]);
+
+    // Real active staff count per province from Salesperson collection
+    const staffCounts = await Salesperson.aggregate([
+      { $match: { status: 'active' } },
+      { $group: { _id: '$province', count: { $sum: 1 } } },
+    ]);
+    const staffMap = {};
+    staffCounts.forEach(s => { staffMap[s._id] = s.count; });
 
     // Payment breakdown — only completed orders
     const completedMatch = { ...baseMatch, status: 'completed' };
@@ -92,8 +100,9 @@ router.get('/by-province', protect, async (req, res) => {
       const base = provinceMap[name] || {
         province: name, totalOrders: 0, totalSales: 0,
         collected: 0, outstanding: 0, dealerCount: 0,
-        activeStaffCount: 0, collectionRate: 0,
+        collectionRate: 0,
       };
+      base.activeStaffCount = staffMap[name] || 0;
       base.paymentBreakdown = paymentMap[name] || {};
       return base;
     });
@@ -208,5 +217,77 @@ function buildDateFilter(range, from, to) {
     default: return null;
   }
 }
+
+/**
+ * GET /api/sales/staff-by-province
+ * Salespersons for a province with their sales stats
+ */
+router.get('/staff-by-province', protect, async (req, res) => {
+  try {
+    const { province } = req.query;
+    if (!province) return res.status(400).json({ success: false, message: 'province required' });
+
+    const Salesperson = require('../models/Salesperson');
+
+    const [staff, salesAgg] = await Promise.all([
+      Salesperson.find({ province }).select('fullName designation area employeeId status'),
+      Order.aggregate([
+        { $match: { province, status: { $in: SALE_STATUSES } } },
+        { $group: { _id: '$salesperson', totalSales: { $sum: '$grandTotal' }, collected: { $sum: '$collectedAmount' }, orderCount: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const salesMap = {};
+    salesAgg.forEach(s => { salesMap[String(s._id)] = s; });
+
+    const data = staff.map(sp => {
+      const s = salesMap[String(sp._id)] || {};
+      return {
+        _id:        sp._id,
+        fullName:   sp.fullName,
+        designation:sp.designation,
+        area:       sp.area,
+        employeeId: sp.employeeId,
+        status:     sp.status,
+        totalSales: s.totalSales  || 0,
+        collected:  s.collected   || 0,
+        orderCount: s.orderCount  || 0,
+        outstanding: (s.totalSales || 0) - (s.collected || 0),
+      };
+    });
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * GET /api/sales/records
+ * Paginated list of Sale records (auto-created from orders)
+ */
+router.get('/records', protect, async (req, res) => {
+  try {
+    const { status, province, page = 1, limit = 20 } = req.query;
+    const match = {};
+    if (status)   match.status   = status;
+    if (province) match.province = province;
+    if (req.user.role === 'staff') match.staffId = req.user._id;
+
+    const total = await Sale.countDocuments(match);
+    const data  = await Sale.find(match)
+      .populate('order',       'orderNumber date grandTotal paymentType')
+      .populate('salesperson', 'fullName')
+      .populate('dealer',      'dealerName area')
+      .populate('staffId',     'name')
+      .sort('-createdAt')
+      .skip((+page - 1) * +limit)
+      .limit(+limit);
+
+    return res.json({ success: true, data, total, pages: Math.ceil(total / +limit) });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 module.exports = router;

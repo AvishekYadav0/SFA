@@ -45,16 +45,16 @@ export const productService = {
 };
 
 export const orderService = {
-  getAll:          (params)     => api.get('/orders', { params }),
-  getOne:          (id)         => api.get(`/orders/${id}`),
-  create:          (data)       => api.post('/orders', data),
-  update:          (id, data)   => api.put(`/orders/${id}`, data),
-  delete:          (id)         => api.delete(`/orders/${id}`),
-  updateStatus:    (id, status) => api.put(`/orders/${id}/status`, { status }),
-  markWarehouse:   (id, data)   => api.put(`/orders/${id}/warehouse`, data),
-  assignDelivery:  (id, data)   => api.put(`/orders/${id}/assign-delivery`, data),
-  markDelivered:   (id)         => api.put(`/orders/${id}/delivered`, {}),
-  recordPayment:   (id, data)   => api.put(`/orders/${id}/payment`, data),
+  getAll:        (params)     => api.get('/orders', { params }),
+  getOne:        (id)         => api.get(`/orders/${id}`),
+  create:        (data)       => api.post('/orders', data),
+  update:        (id, data)   => api.put(`/orders/${id}`, data),
+  delete:        (id)         => api.delete(`/orders/${id}`),
+  updateStatus:  (id, data)   => api.patch(`/orders/${id}/status`, data),
+};
+
+export const saleService = {
+  getRecords: (params) => api.get('/sales/records', { params }),
 };
 
 export const liftingService = {
@@ -99,4 +99,12 @@ export const targetService = {
   create:  (data)   => api.post('/targets', data),
   update:  (id, data) => api.put(`/targets/${id}`, data),
   delete:  (id)     => api.delete(`/targets/${id}`),
+};
+
+export const dailyVisitService = {
+  getMine:       (date)       => api.get('/daily-visits/mine', { params: { date } }),
+  getAll:        (params)     => api.get('/daily-visits', { params }),
+  assign:        (data)       => api.post('/daily-visits', data),
+  updateStatus:  (id, data)   => api.patch(`/daily-visits/${id}`, data),
+  remove:        (id)         => api.delete(`/daily-visits/${id}`),
 };

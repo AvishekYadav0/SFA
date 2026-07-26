@@ -1,34 +1,63 @@
 const mongoose = require('mongoose');
-const Counter = require('./Counter');
 
-const OrderSchema = new mongoose.Schema({
-  orderNumber: { type: String, unique: true, index: true },
-  date: { type: Date, default: Date.now },
-  salesperson: { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson' },
-  dealer: { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer' },
-  area: String,
-  province: String,
-  items: { type: Array, default: [] },
-  totalBasicAmount: { type: Number, default: 0 },
+const orderItemSchema = new mongoose.Schema({
+  product:       { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  productName:   String,
+  quantity:      { type: Number, required: true },
+  rate:          { type: Number, required: true },
+  excisePercent: { type: Number, default: 0 },
+  vatPercent:    { type: Number, default: 0 },
+  basicAmount:   Number,
+  exciseAmount:  Number,
+  vatAmount:     Number,
+  grandTotal:    Number,
+});
+
+const orderSchema = new mongoose.Schema({
+  orderNumber:       { type: String, unique: true },
+  date:              { type: Date, required: true, default: Date.now },
+  salesperson:       { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson', required: true },
+  dealer:            { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer', required: true },
+  area:              String,
+  province:          { type: String, default: '' },
+  staffId:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  items:             [orderItemSchema],
+  totalBasicAmount:  { type: Number, default: 0 },
   totalExciseAmount: { type: Number, default: 0 },
-  totalVatAmount: { type: Number, default: 0 },
-  grandTotal: { type: Number, default: 0 },
-  status: { type: String, default: 'pending' },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: Date,
-});
+  totalVatAmount:    { type: Number, default: 0 },
+  grandTotal:        { type: Number, default: 0 },
+  remarks:           String,
+  paymentType:       { type: String, enum: ['cash', 'online', 'credit'], default: 'cash' },
+  status:            {
+    type: String,
+    enum: ['pending', 'approved', 'rejected', 'cancelled', 'warehouse', 'out_for_delivery', 'delivered', 'completed'],
+    default: 'pending',
+  },
+  // pipeline tracking
+  approvedAt:        Date,
+  approvedBy:        { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  warehouseAt:       Date,
+  dispatchedAt:      Date,
+  deliveredAt:       Date,
+  // payment
+  collectedAmount:   { type: Number, default: 0 },
+  paymentMethod:     { type: String, enum: ['cash', 'online', 'credit', 'bank', 'esewa', 'fonepay', 'cheque'], default: 'cash' },
+  paidAt:            Date,
+  createdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
 
-// Assign an atomic order number if not already set
-OrderSchema.pre('validate', async function(next) {
-  try {
-    if (this.orderNumber) return next();
-    const seq = await Counter.getNext('orderNumber');
-    this.orderNumber = `ORD-${String(seq).padStart(5, '0')}`;
-    return next();
-  } catch (err) {
-    return next(err);
+orderSchema.index({ date: -1 });
+orderSchema.index({ salesperson: 1, date: -1 });
+orderSchema.index({ staffId: 1, date: -1 });
+orderSchema.index({ status: 1 });
+
+orderSchema.pre('save', async function (next) {
+  if (!this.orderNumber) {
+    const count = await mongoose.model('Order').countDocuments();
+    this.orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
   }
+  next();
 });
 
-module.exports = mongoose.model('Order', OrderSchema);
+module.exports = mongoose.model('Order', orderSchema);
+

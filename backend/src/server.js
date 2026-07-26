@@ -27,7 +27,7 @@ app.use('/api/users',       require('./routes/users'));
 app.use('/api/salespersons',require('./routes/salespersons'));
 app.use('/api/dealers',     require('./routes/dealers'));
 app.use('/api/products',    require('./routes/products'));
-// app.use('/api/orders',      require('./routes/orders'));
+app.use('/api/orders',      require('./routes/orders'));
 app.use('/api/lifting',     require('./routes/lifting'));
 app.use('/api/collections', require('./routes/collections'));
 app.use('/api/dashboard',   require('./routes/dashboard'));
@@ -35,6 +35,7 @@ app.use('/api/reports',      require('./routes/reports'));
 app.use('/api/targets',      require('./routes/targets'));
 app.use('/api/soledealers',  require('./routes/soledealers'));
 app.use('/api/sales',        require('./routes/sales'));
+app.use('/api/daily-visits', require('./routes/dailyVisits'));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -77,7 +78,9 @@ async function startServer() {
         // ── Keep-alive: ping self every 14 min to prevent free-tier sleep ──
         if (process.env.SELF_URL) {
           setInterval(() => {
-            require('http').get(`${process.env.SELF_URL}/api/health`, (res) => {
+            const url = `${process.env.SELF_URL}/api/health`;
+            const client = url.startsWith('https') ? require('https') : require('http');
+            client.get(url, (res) => {
               console.log(`Keep-alive ping: ${res.statusCode}`);
             }).on('error', () => {});
           }, 14 * 60 * 1000);

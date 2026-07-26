@@ -1,4 +1,4 @@
-// const Order      = require('../models/Order');
+const Order      = require('../models/Order');
 const Collection = require('../models/Collection');
 const Lifting    = require('../models/Lifting');
 const Target     = require('../models/Target');
@@ -8,14 +8,49 @@ const mongoose   = require('mongoose');
 const toId = (v) => new mongoose.Types.ObjectId(v);
 
 // ── Shared filter builder ─────────────────────────────────────────────────────
+const buildDateFilter = (q) => {
+  if (q.from && q.to) return { date: { $gte: new Date(q.from), $lte: new Date(q.to) } };
+  if (q.startDate && q.endDate) return { date: { $gte: new Date(q.startDate), $lte: new Date(q.endDate) } };
+
+  const range = q.range || 'all';
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+
+  if (range === 'day') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return { date: { $gte: start, $lte: end } };
+  }
+
+  if (range === 'week') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 6);
+    return { date: { $gte: start, $lte: end } };
+  }
+
+  if (range === 'month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { date: { $gte: start, $lte: end } };
+  }
+
+  if (range === 'year') {
+    const start = new Date(now.getFullYear(), 0, 1);
+    return { date: { $gte: start, $lte: end } };
+  }
+
+  return {};
+};
+
 const buildFilter = (q) => {
   const f = {};
   if (q.province)  f.province = q.province;
   if (q.staffId)   f.staffId  = toId(q.staffId);
   if (q.dealer)    f.dealer   = toId(q.dealer);
   if (q.status)    f.status   = q.status;
-  if (q.startDate && q.endDate)
-    f.date = { $gte: new Date(q.startDate), $lte: new Date(q.endDate) };
+  const dateFilter = buildDateFilter(q);
+  if (dateFilter.date) f.date = dateFilter.date;
   return f;
 };
 
@@ -96,7 +131,7 @@ exports.salespersonPerformance = async (req, res) => {
     { $match: match },
     { $group: { _id: '$staffId', totalSales: { $sum: '$grandTotal' }, orderCount: { $sum: 1 } } },
     { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'staff' } },
-    { $unwind: { path: '$staff', preserveNullAndEmpty: true } },
+    { $unwind: { path: '$staff', preserveNullAndEmptyArrays: true } },
     { $project: { name: '$staff.name', province: '$staff.province', designation: '$staff.designation', totalSales: 1, orderCount: 1 } },
     { $sort: { totalSales: -1 } },
   ]);
@@ -108,14 +143,14 @@ exports.productWiseSales = async (req, res) => {
   const match = { status: 'approved' };
   if (req.query.province) match.province = req.query.province;
   if (req.user.role === 'staff' && req.user.province) match.province = req.user.province;
-  if (req.query.startDate && req.query.endDate)
-    match.date = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
+  const dateFilter = buildDateFilter(req.query);
+  if (dateFilter.date) match.date = dateFilter.date;
   const data = await Order.aggregate([
     { $match: match },
     { $unwind: '$items' },
     { $group: { _id: '$items.product', productName: { $first: '$items.productName' }, totalQty: { $sum: '$items.quantity' }, totalAmount: { $sum: '$items.grandTotal' } } },
     { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
-    { $unwind: { path: '$product', preserveNullAndEmpty: true } },
+    { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
     { $project: { productName: { $ifNull: ['$product.productName', '$productName'] }, brand: '$product.brand', category: '$product.category', sku: '$product.sku', totalQty: 1, totalAmount: 1 } },
     { $sort: { totalAmount: -1 } },
   ]);

@@ -10,6 +10,16 @@ import { FiPlus, FiEdit2, FiTrash2, FiTruck } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
+const PROVINCES = [
+  'Koshi Province',
+  'Madhesh Province',
+  'Bagmati Province',
+  'Gandaki Province',
+  'Lumbini Province',
+  'Karnali Province',
+  'Sudurpashchim Province',
+];
+
 const ProgressBar = ({ percent }) => {
   const color = percent >= 100 ? '#22C55E' : percent >= 75 ? '#3B82F6' : percent >= 50 ? '#F59E0B' : '#EF4444';
   return (
@@ -74,9 +84,10 @@ export default function Lifting() {
   const [orders, setOrders] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const { register, handleSubmit, reset, control, setValue, formState: { isSubmitting } } = useForm({
-    defaultValues: { week1: 0, week2: 0, week3: 0, week4: 0, orderedQuantity: 0 }
+    defaultValues: { week1: 0, week2: 0, week3: 0, week4: 0, orderedQuantity: 0, province: '' }
   });
 
   useEffect(() => {
@@ -89,15 +100,36 @@ export default function Lifting() {
   const handleOrderChange = (orderId) => {
     const order = orders.find(o => o._id === orderId);
     if (order) {
+      setSelectedOrder(order);
       setValue('dealer', order.dealer?._id || order.dealer);
+      setValue('province', order.dealer?.province || order.province || '');
+      const firstItem = order.items?.[0];
+      setValue('product', firstItem?.product?._id || firstItem?.product || '');
       const totalQty = order.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
       setValue('orderedQuantity', totalQty);
+      // auto-fill month/year from order date
+      if (order.date || order.createdAt) {
+        const d = new Date(order.date || order.createdAt);
+        const monthName = d.toLocaleString('default', { month: 'long' });
+        setValue('month', `${monthName} ${d.getFullYear()}`);
+        setValue('year', d.getFullYear());
+      }
+    } else {
+      setSelectedOrder(null);
+      setValue('province', '');
+    }
+  };
+
+  const handleDealerChange = (dealerId) => {
+    const dealer = dealers.find(d => d._id === dealerId);
+    if (dealer) {
+      setValue('province', dealer.province || '');
     }
   };
 
   const openCreate = () => {
     setEditData(null);
-    reset({ week1: 0, week2: 0, week3: 0, week4: 0, orderedQuantity: 0, year: new Date().getFullYear() });
+    reset({ week1: 0, week2: 0, week3: 0, week4: 0, orderedQuantity: 0, province: '', year: new Date().getFullYear() });
     setShowForm(true);
   };
 
@@ -160,7 +192,7 @@ export default function Lifting() {
             </div>
             <div>
               <label className="label text-xs">Dealer</label>
-              <select {...register('dealer')} className="input text-sm">
+              <select {...register('dealer')} onChange={e => handleDealerChange(e.target.value)} className="input text-sm">
                 <option value="">Select Dealer...</option>
                 {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName}</option>)}
               </select>
@@ -170,6 +202,13 @@ export default function Lifting() {
               <select {...register('product')} className="input text-sm">
                 <option value="">Select Product...</option>
                 {products.map(p => <option key={p._id} value={p._id}>{p.productName}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs">Province *</label>
+              <select {...register('province', { required: 'Required' })} className="input text-sm">
+                <option value="">Select Province...</option>
+                {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>

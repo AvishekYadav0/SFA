@@ -3,27 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { dashboardService } from '../services';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
   FiShoppingCart, FiDollarSign, FiTruck, FiAlertCircle,
-  FiShoppingBag, FiPackage, FiUsers, FiMapPin, FiTrendingUp,
+  FiShoppingBag, FiPackage, FiUsers, FiTrendingUp,
 } from 'react-icons/fi';
 import { Skeleton } from '../components/common/Spinner';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { useAuth } from '../context/AuthContext';
-
-/* ── Province color palette ──────────────────────────── */
-const PROVINCE_COLORS = {
-  'Koshi Province': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
-  'Madhesh Province': { bg: '#F0FDF4', border: '#22C55E', text: '#15803D' },
-  'Bagmati Province': { bg: '#F5F3FF', border: '#8B5CF6', text: '#6D28D9' },
-  'Gandaki Province': { bg: '#FFFBEB', border: '#F59E0B', text: '#B45309' },
-  'Lumbini Province': { bg: '#FEF2F2', border: '#EF4444', text: '#B91C1C' },
-  'Karnali Province': { bg: '#ECFEFF', border: '#06B6D4', text: '#0E7490' },
-  'Sudurpashchim Province': { bg: '#FDF4FF', border: '#EC4899', text: '#BE185D' },
-};
-const getColor = (province) => PROVINCE_COLORS[province] || { bg: '#F8FAFC', border: '#94A3B8', text: '#475569' };
 
 /* ── Stat Card ───────────────────────────────────────── */
 const StatCard = ({ icon: Icon, label, value, color, sub, onClick }) => (
@@ -43,61 +31,6 @@ const StatCard = ({ icon: Icon, label, value, color, sub, onClick }) => (
   </div>
 );
 
-/* ── Province Card ───────────────────────────────────── */
-const ProvinceCard = ({ stat }) => {
-  const c = getColor(stat.province);
-  const collPct = stat.totalSales > 0 ? Math.min(100, Math.round((stat.totalCollection / stat.totalSales) * 100)) : 0;
-  return (
-    <div className="rounded-2xl border-2 overflow-hidden shadow-sm" style={{ borderColor: c.border, background: '#fff' }}>
-      {/* header */}
-      <div className="px-4 py-3 flex items-center gap-2" style={{ background: c.border }}>
-        <FiMapPin className="text-white flex-shrink-0" size={14} />
-        <h3 className="font-bold text-white text-sm truncate">{stat.province}</h3>
-      </div>
-      {/* stats grid */}
-      <div className="p-3 grid grid-cols-2 gap-2">
-        <div className="rounded-xl p-2.5 text-center" style={{ background: c.bg }}>
-          <p className="text-xs text-slate-500 mb-0.5">Orders</p>
-          <p className="text-xl font-bold" style={{ color: c.text }}>{stat.totalOrders}</p>
-        </div>
-        <div className="rounded-xl p-2.5 text-center" style={{ background: c.bg }}>
-          <p className="text-xs text-slate-500 mb-0.5">Dealers</p>
-          <p className="text-xl font-bold" style={{ color: c.text }}>{stat.totalDealers}</p>
-        </div>
-        <div className="rounded-xl p-2.5 text-center col-span-2" style={{ background: c.bg }}>
-          <p className="text-xs text-slate-500 mb-0.5">Total Sales</p>
-          <p className="text-lg font-bold" style={{ color: c.text }}>{formatCurrency(stat.totalSales)}</p>
-        </div>
-        <div className="rounded-xl p-2.5 text-center" style={{ background: '#f0fdf4' }}>
-          <p className="text-xs text-slate-500 mb-0.5">Collected</p>
-          <p className="text-sm font-bold text-green-700">{formatCurrency(stat.totalCollection)}</p>
-        </div>
-        <div className="rounded-xl p-2.5 text-center" style={{ background: stat.outstandingBalance > 0 ? '#fef2f2' : '#f0fdf4' }}>
-          <p className="text-xs text-slate-500 mb-0.5">Outstanding</p>
-          <p className="text-sm font-bold" style={{ color: stat.outstandingBalance > 0 ? '#dc2626' : '#16a34a' }}>
-            {formatCurrency(stat.outstandingBalance)}
-          </p>
-        </div>
-      </div>
-      {/* collection progress */}
-      <div className="px-3 pb-3">
-        <div className="flex justify-between text-xs text-slate-500 mb-1">
-          <span>Collection Rate</span><span>{collPct}%</span>
-        </div>
-        <div className="w-full rounded-full h-2" style={{ background: '#e2e8f0' }}>
-          <div className="h-2 rounded-full transition-all duration-500"
-            style={{ width: `${collPct}%`, background: c.border }} />
-        </div>
-      </div>
-      {/* staff count */}
-      <div className="px-3 pb-3 flex items-center gap-1.5">
-        <FiUsers size={11} style={{ color: c.text }} />
-        <span className="text-xs" style={{ color: c.text }}>{stat.activeStaff} active staff</span>
-      </div>
-    </div>
-  );
-};
-
 /* ── Main Dashboard ──────────────────────────────────── */
 export default function Dashboard() {
   const { user } = useAuth();
@@ -105,6 +38,15 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const isAdmin = user?.role === 'admin';
+  const getColor = (province) => ({
+    'Koshi Province': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
+    'Madhesh Province': { bg: '#F0FDF4', border: '#22C55E', text: '#15803D' },
+    'Bagmati Province': { bg: '#F5F3FF', border: '#8B5CF6', text: '#6D28D9' },
+    'Gandaki Province': { bg: '#FFFBEB', border: '#F59E0B', text: '#B45309' },
+    'Lumbini Province': { bg: '#FEF2F2', border: '#EF4444', text: '#B91C1C' },
+    'Karnali Province': { bg: '#ECFEFF', border: '#06B6D4', text: '#0E7490' },
+    'Sudurpashchim Province': { bg: '#FDF4FF', border: '#EC4899', text: '#BE185D' },
+  }[province] || { bg: '#F8FAFC', border: '#94A3B8', text: '#475569' });
 
   const fetchDashboard = () => {
     dashboardService.get()
@@ -136,13 +78,6 @@ export default function Dashboard() {
       </div>
     </div>
   );
-
-  const provinceChartData = (data?.provinceStats || []).map(p => ({
-    name: p.province.replace(' Province', ''),
-    Sales: Math.round(p.totalSales),
-    Collection: Math.round(p.totalCollection),
-    Outstanding: Math.round(p.outstandingBalance),
-  }));
 
   return (
     <div className="space-y-6">
@@ -183,40 +118,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* ── Province-wise Cards (Admin only) ─────────── */}
-      {isAdmin && data?.provinceStats?.length > 0 && data.provinceStats.some(p => p.totalOrders > 0 || p.totalDealers > 0 || p.activeStaff > 0) && (
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            📍 Province-wise Sales Breakdown
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {data.provinceStats.map(stat => (
-              <ProvinceCard key={stat.province} stat={stat} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Province-wise Bar Chart (Admin only) ─────── */}
-      {isAdmin && provinceChartData.length > 0 && (
-        <div className="card">
-          <h3 className="font-semibold text-slate-900 dark:text-white mb-1">Province-wise Sales vs Collection</h3>
-          <p className="text-xs text-slate-400 mb-4">Comparison of sales, collection and outstanding per province</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={provinceChartData} margin={{ left: 10, right: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-10} textAnchor="end" height={45} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(v) => formatCurrency(v)} />
-              <Legend />
-              <Bar dataKey="Sales" fill="#2563EB" radius={[4, 4, 0, 0]} name="Sales" />
-              <Bar dataKey="Collection" fill="#22C55E" radius={[4, 4, 0, 0]} name="Collection" />
-              <Bar dataKey="Outstanding" fill="#EF4444" radius={[4, 4, 0, 0]} name="Outstanding" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
 
       {/* ── Monthly Charts ───────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

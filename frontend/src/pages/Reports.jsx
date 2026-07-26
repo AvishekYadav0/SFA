@@ -91,6 +91,14 @@ const STATUS_COLORS = {
   'Dispatch Pending': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
 };
 
+const RANGE_OPTIONS = [
+  { value: 'all', label: 'All Time' },
+  { value: 'day', label: 'Daily' },
+  { value: 'week', label: 'Weekly' },
+  { value: 'month', label: 'Monthly' },
+  { value: 'year', label: 'Yearly' },
+];
+
 const StatusBadge = ({ status }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[status] || 'bg-slate-100 text-slate-600'}`}>
     {status || '-'}
@@ -150,44 +158,23 @@ const REPORT_CONFIGS = {
       { key: 'progressPercent', label: 'Progress', render: (r) => <ProgressBar percent={r.progressPercent} /> },
     ],
   },
-  'dealer-outstanding': {
-    label: 'Dealer Outstanding',
-    fetch: () => reportService.dealerOutstanding(),
-    columns: [
-      { key: 'dealerName', label: 'Dealer', className: 'font-medium' },
-      { key: 'area', label: 'Area' },
-      { key: 'totalDue', label: 'Total Due', format: 'currency', sum: true },
-      { key: 'totalCollection', label: 'Total Collection', format: 'currency', sum: true, className: 'text-success font-medium' },
-      { key: 'closingBalance', label: 'Outstanding Balance', format: 'currency', sum: true, className: (v) => (v > 0 ? 'text-danger font-bold' : 'text-success font-bold') },
-    ],
-  },
-  'salesperson-performance': {
-    label: 'Salesperson Performance',
-    fetch: (f) => reportService.salespersonPerformance(f),
+  'product-wise': {
+    label: 'Product Wise Sales',
+    fetch: (f) => reportService.productWise(f),
     dateFilter: true,
     chart: (data) => (
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data}>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={data.slice(0, 10)} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="productName" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={60} />
           <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v) => formatCurrency(v)} />
-          <Bar dataKey="totalSales" fill="#2563EB" radius={[6, 6, 0, 0]} name="Total Sales" />
+          <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
+          <Legend />
+          <Bar dataKey="totalQty" fill="#2563EB" radius={[6, 6, 0, 0]} name="Qty Sold" />
+          <Bar dataKey="totalAmount" fill="#22C55E" radius={[6, 6, 0, 0]} name="Sales Amount" />
         </BarChart>
       </ResponsiveContainer>
     ),
-    columns: [
-      { key: '__rank', label: 'Rank', render: (_, i) => <span className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-600 text-xs font-bold inline-flex items-center justify-center">{i + 1}</span> },
-      { key: 'name', label: 'Sales Person', className: 'font-medium' },
-      { key: 'province', label: 'Province' },
-      { key: 'designation', label: 'Designation' },
-      { key: 'orderCount', label: 'Total Orders' },
-      { key: 'totalSales', label: 'Total Sales', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
-    ],
-  },
-  'product-wise': {
-    label: 'Product Wise Sales',
-    fetch: () => reportService.productWise(),
     columns: [
       { key: 'productName', label: 'Product', className: 'font-medium' },
       { key: 'brand', label: 'Brand' },
@@ -241,33 +228,6 @@ const REPORT_CONFIGS = {
       { key: 'totalSales', label: 'Total Sales', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
     ],
   },
-  'target-achievement': {
-    label: 'Target vs Achievement',
-    fetch: (f) => reportService.targetAchievement(f),
-    dateFilter: true,
-    columns: [
-      { key: 'staffName', label: 'Staff', className: 'font-medium' },
-      { key: 'role', label: 'Role' },
-      { key: 'period', label: 'Period' },
-      { key: 'salesTarget', label: 'Sales Target', format: 'currency', sum: true },
-      { key: 'salesAchieved', label: 'Sales Achieved', format: 'currency', sum: true, className: 'text-success font-medium' },
-      {
-        key: '__salesPct',
-        label: 'Target %',
-        exportValue: (r) => (r.salesTarget ? Math.round((r.salesAchieved / r.salesTarget) * 100) : 0),
-        render: (r) => <ProgressBar percent={r.salesTarget ? (r.salesAchieved / r.salesTarget) * 100 : 0} />,
-      },
-      {
-        key: '__balance',
-        label: 'Balance to Achieve',
-        exportValue: (r) => Math.max(0, (r.salesTarget || 0) - (r.salesAchieved || 0)),
-        render: (r) => formatCurrency(Math.max(0, (r.salesTarget || 0) - (r.salesAchieved || 0))),
-        className: 'font-medium',
-      },
-      { key: 'collectionTarget', label: 'Coll. Target', format: 'currency', sum: true },
-      { key: 'collectionAchieved', label: 'Coll. Achieved', format: 'currency', sum: true, className: 'text-success font-medium' },
-    ],
-  },
   'dealer-hierarchy': {
     label: 'Dealer Hierarchy Report',
     fetch: (f) => reportService.dealerHierarchy(f),
@@ -306,37 +266,6 @@ const REPORT_CONFIGS = {
       { key: 'designation', label: 'Designation' },
       { key: 'orderCount', label: 'Orders' },
       { key: 'totalSales', label: 'Total Sales', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
-    ],
-  },
-  'collection-ageing': {
-    label: 'Collection Ageing',
-    fetch: (f) => reportService.collectionAgeing(f),
-    columns: [
-      { key: 'soleDealerName', label: 'Sole Dealer', className: 'font-medium' },
-      { key: 'dealerName', label: 'Dealer' },
-      { key: 'area', label: 'Area' },
-      { key: 'staffName', label: 'Staff' },
-      { key: 'month', label: 'Month' },
-      { key: 'daysOverdue', label: 'Days Overdue' },
-      { key: 'bucket', label: 'Ageing Bucket', className: (v) => v === '90+ days' ? 'text-danger font-bold' : v === '61-90 days' ? 'text-orange-600 font-medium' : '' },
-      { key: 'closingBalance', label: 'Outstanding', format: 'currency', sum: true, className: 'text-danger font-bold' },
-    ],
-  },
-  'dealer-performance': {
-    label: 'Dealer Performance',
-    fetch: (f) => reportService.dealerPerformance(f),
-    dateFilter: true,
-    columns: [
-      { key: 'soleDealerName', label: 'Sole Dealer', className: 'font-medium' },
-      { key: 'dealerName', label: 'Dealer' },
-      { key: 'area', label: 'Area' },
-      { key: 'province', label: 'Province' },
-      { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} />, exportValue: (r) => r.status },
-      { key: 'orderCount', label: 'Orders' },
-      { key: 'lastOrder', label: 'Last Order', format: 'date' },
-      { key: 'totalSales', label: 'Total Sales', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
-      { key: 'totalCollection', label: 'Total Collection', format: 'currency', sum: true, className: 'text-success font-medium' },
-      { key: 'outstanding', label: 'Outstanding', format: 'currency', sum: true, className: (v) => (v > 0 ? 'text-danger font-bold' : 'text-success font-bold') },
     ],
   },
 };
@@ -473,7 +402,7 @@ export default function Reports() {
   const [activeReport, setActiveReport] = useState('sales');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ startDate: '', endDate: '', year: new Date().getFullYear() });
+  const [filters, setFilters] = useState({ range: 'all', startDate: '', endDate: '', year: new Date().getFullYear() });
 
   const config = REPORT_CONFIGS[activeReport];
 
@@ -532,6 +461,20 @@ export default function Reports() {
         <div className="lg:col-span-3 space-y-4">
           <div className="card">
             <div className="flex flex-wrap items-end gap-4">
+              {config.dateFilter && (
+                <div className="flex flex-wrap gap-2">
+                  {RANGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFilters((f) => ({ ...f, range: option.value }))}
+                      className={`px-3 py-2 text-sm rounded-xl border transition ${filters.range === option.value ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-300'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {config.yearFilter ? (
                 <div>
                   <label className="label">Year</label>
@@ -564,21 +507,50 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="card p-0" id="report-print-area">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900 dark:text-white">{config.label}</h3>
-            </div>
-            <div className="p-4">
-              {loading ? (
-                <PageLoader />
-              ) : (
-                <>
-                  {config.chart && data.length > 0 && <div className="mb-6">{config.chart(data)}</div>}
-                  <div className="table-wrapper">
-                    <ReportTable data={data} columns={config.columns} />
-                  </div>
-                </>
-              )}
+          <div className="space-y-4">
+            {activeReport === 'product-wise' && data.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {['Qty Sold', 'Sales Amount', 'Top Product'].map((title, index) => {
+                  const sorted = [...data].sort((a, b) => {
+                    if (title === 'Sales Amount') return (b.totalAmount || 0) - (a.totalAmount || 0);
+                    if (title === 'Top Product') return (b.totalQty || 0) - (a.totalQty || 0);
+                    return (b.totalQty || 0) - (a.totalQty || 0);
+                  });
+                  const product = sorted[0] || {};
+                  return (
+                    <div key={title} className="card p-4 border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">{title}</p>
+                      <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                        {title === 'Sales Amount' ? formatCurrency(product.totalAmount || 0) : product.productName || '—'}
+                      </p>
+                      {title !== 'Sales Amount' && (
+                        <p className="text-sm text-slate-500 mt-1">{product.brand || 'Unknown brand'}</p>
+                      )}
+                      {title === 'Top Product' && (
+                        <p className="text-sm text-slate-500 mt-2">Qty sold: {product.totalQty || 0}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="card p-0" id="report-print-area">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900 dark:text-white">{config.label}</h3>
+              </div>
+              <div className="p-4">
+                {loading ? (
+                  <PageLoader />
+                ) : (
+                  <>
+                    {config.chart && data.length > 0 && <div className="mb-6">{config.chart(data)}</div>}
+                    <div className="table-wrapper">
+                      <ReportTable data={data} columns={config.columns} />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

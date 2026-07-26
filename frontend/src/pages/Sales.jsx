@@ -88,71 +88,120 @@ const PaymentBreakdown = ({ breakdown }) => {
   );
 };
 
-/* ── Province Card ───────────────────────────────────── */
-const ProvinceCard = ({ data, onClick }) => {
-  const c = PROVINCE_COLORS[data.province] || { bg: '#f8fafc', border: '#94a3b8', text: '#475569', bar: '#94a3b8' };
-  const rate = Math.min(100, Math.max(0, data.collectionRate || 0));
-  const hasData = data.totalOrders > 0;
+/* ── Province Staff Modal ────────────────────────────── */
+const ProvinceStaffModal = ({ province, onClose }) => {
+  const c = PROVINCE_COLORS[province] || { bg: '#f8fafc', border: '#94a3b8', text: '#475569' };
+  const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/sales/staff-by-province', { params: { province } })
+      .then(r => setStaff(r.data.data || []))
+      .catch(() => setStaff([]))
+      .finally(() => setLoading(false));
+  }, [province]);
+
+  const active   = staff.filter(s => s.status !== 'inactive').length;
+  const inactive = staff.length - active;
 
   return (
-    <button onClick={onClick}
-      className="text-left rounded-2xl border-2 overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 bg-white w-full"
-      style={{ borderColor: c.border }}>
-      {/* header */}
-      <div className="px-4 py-3 flex items-center gap-2" style={{ background: c.border }}>
-        <FiMapPin className="text-white flex-shrink-0" size={13} />
-        <span className="font-bold text-white text-sm truncate">{data.province}</span>
-        {hasData && (
-          <span className="ml-auto text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-medium">
-            {data.totalOrders} orders
-          </span>
-        )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 flex items-center justify-between rounded-t-2xl" style={{ background: c.border }}>
+          <div className="flex items-center gap-2">
+            <FiMapPin className="text-white" size={16} />
+            <h2 className="font-bold text-white">{province}</h2>
+            {!loading && <span className="text-white/80 text-xs ml-1">{staff.length} staff · {active} active · {inactive} inactive</span>}
+          </div>
+          <button onClick={onClose} className="text-white hover:opacity-70 text-xl font-bold">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          {loading ? (
+            <div className="space-y-3">
+              {Array(3).fill(0).map((_, i) => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}
+            </div>
+          ) : !staff.length ? (
+            <p className="text-center text-slate-400 py-10 text-sm">No salespersons in this province.</p>
+          ) : (
+            <div className="space-y-3">
+              {staff.map((sp, i) => (
+                <div key={sp._id} className="rounded-xl border p-3 flex items-center gap-3" style={{ borderColor: c.border + '44', background: c.bg }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: c.border, color: '#fff' }}>{i + 1}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-slate-800 text-sm truncate">{sp.fullName}</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        sp.status === 'inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'
+                      }`}>{sp.status || 'active'}</span>
+                    </div>
+                    <p className="text-xs text-slate-500">{sp.designation} · {sp.area} · {sp.employeeId}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs text-slate-500">{sp.orderCount} orders</p>
+                    <p className="text-sm font-bold" style={{ color: c.text }}>{formatCurrency(sp.totalSales)}</p>
+                    <p className="text-xs text-green-600">Collected: {formatCurrency(sp.collected)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+    </div>
+  );
+};
 
-      <div className="p-3 space-y-2">
-        {/* sales */}
+/* ── Province Card (dashboard style) ────────────────── */
+const ProvinceCard = ({ stat, onClick }) => {
+  const c = PROVINCE_COLORS[stat.province] || { bg: '#f8fafc', border: '#94a3b8', text: '#475569' };
+  const collPct = stat.totalSales > 0 ? Math.min(100, Math.round((stat.collected / stat.totalSales) * 100)) : 0;
+  return (
+    <div onClick={onClick}
+      className="rounded-2xl border-2 overflow-hidden shadow-sm cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 bg-white"
+      style={{ borderColor: c.border }}>
+      <div className="px-4 py-3 flex items-center gap-2" style={{ background: c.border }}>
+        <FiMapPin className="text-white flex-shrink-0" size={14} />
+        <h3 className="font-bold text-white text-sm truncate">{stat.province}</h3>
+      </div>
+      <div className="p-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl p-2.5 text-center" style={{ background: c.bg }}>
-          <p className="text-[10px] text-slate-500 mb-0.5">Total Sales</p>
-          <p className="text-base font-bold" style={{ color: c.text }}>
-            {formatCurrency(data.totalSales)}
+          <p className="text-xs text-slate-500 mb-0.5">Orders</p>
+          <p className="text-xl font-bold" style={{ color: c.text }}>{stat.totalOrders}</p>
+        </div>
+        <div className="rounded-xl p-2.5 text-center" style={{ background: c.bg }}>
+          <p className="text-xs text-slate-500 mb-0.5">Dealers</p>
+          <p className="text-xl font-bold" style={{ color: c.text }}>{stat.dealerCount}</p>
+        </div>
+        <div className="rounded-xl p-2.5 text-center col-span-2" style={{ background: c.bg }}>
+          <p className="text-xs text-slate-500 mb-0.5">Total Sales</p>
+          <p className="text-lg font-bold" style={{ color: c.text }}>{formatCurrency(stat.totalSales)}</p>
+        </div>
+        <div className="rounded-xl p-2.5 text-center" style={{ background: '#f0fdf4' }}>
+          <p className="text-xs text-slate-500 mb-0.5">Collected</p>
+          <p className="text-sm font-bold text-green-700">{formatCurrency(stat.collected)}</p>
+        </div>
+        <div className="rounded-xl p-2.5 text-center" style={{ background: stat.outstanding > 0 ? '#fef2f2' : '#f0fdf4' }}>
+          <p className="text-xs text-slate-500 mb-0.5">Outstanding</p>
+          <p className="text-sm font-bold" style={{ color: stat.outstanding > 0 ? '#dc2626' : '#16a34a' }}>
+            {formatCurrency(stat.outstanding)}
           </p>
         </div>
-
-        {/* collected / outstanding */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl p-2 text-center bg-green-50">
-            <p className="text-[10px] text-slate-500">Collected</p>
-            <p className="text-sm font-bold text-green-700">{formatCurrency(data.collected)}</p>
-          </div>
-          <div className="rounded-xl p-2 text-center" style={{ background: data.outstanding > 0 ? '#fef2f2' : '#f0fdf4' }}>
-            <p className="text-[10px] text-slate-500">Outstanding</p>
-            <p className="text-sm font-bold" style={{ color: data.outstanding > 0 ? '#dc2626' : '#16a34a' }}>
-              {formatCurrency(data.outstanding)}
-            </p>
-          </div>
+      </div>
+      <div className="px-3 pb-2">
+        <div className="flex justify-between text-xs text-slate-500 mb-1">
+          <span>Collection Rate</span><span>{collPct}%</span>
         </div>
-
-        {/* collection rate bar */}
-        <div>
-          <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-            <span>Collection Rate</span><span>{rate.toFixed(0)}%</span>
-          </div>
-          <div className="w-full h-1.5 rounded-full bg-slate-100">
-            <div className="h-1.5 rounded-full transition-all duration-500"
-              style={{ width: `${rate}%`, background: c.bar }} />
-          </div>
-        </div>
-
-        {/* payment breakdown */}
-        <PaymentBreakdown breakdown={data.paymentBreakdown} />
-
-        {/* dealers / staff */}
-        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-          <span>{data.dealerCount} dealers</span>
-          <span className="flex items-center gap-1"><FiUsers size={10} />{data.activeStaffCount} staff</span>
+        <div className="w-full rounded-full h-2" style={{ background: '#e2e8f0' }}>
+          <div className="h-2 rounded-full transition-all duration-500"
+            style={{ width: `${collPct}%`, background: c.border }} />
         </div>
       </div>
-    </button>
+      <div className="px-3 pb-3 flex items-center gap-1.5">
+        <FiUsers size={11} style={{ color: c.text }} />
+        <span className="text-xs" style={{ color: c.text }}>{stat.activeStaffCount} active staff</span>
+      </div>
+    </div>
   );
 };
 
@@ -322,12 +371,12 @@ const OrdersTable = ({ province, range, from, to }) => {
 
   if (loading) return <PageLoader />;
   if (!orders.length) return (
-    <div className="text-center py-10 text-slate-400 text-sm">No completed orders found.</div>
+    <div className="text-center py-10 text-slate-400 text-sm">No orders found.</div>
   );
 
   return (
     <div>
-      <p className="text-xs text-slate-500 mb-2">{total} completed orders</p>
+      <p className="text-xs text-slate-500 mb-2">{total} orders</p>
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="w-full text-sm">
           <thead style={{ background: '#1e3a8a', color: '#fff' }}>
@@ -400,10 +449,18 @@ export default function Sales() {
   const to    = searchParams.get('to') || '';
   const selectedProvince = searchParams.get('province') || null;
 
-  const [provinces, setProvinces] = useState([]);
-  const [overall, setOverall] = useState(null);
+  const DEFAULT_PROVINCES = [
+    'Koshi Province', 'Madhesh Province', 'Bagmati Province', 'Gandaki Province',
+    'Lumbini Province', 'Karnali Province', 'Sudurpashchim Province',
+  ].map(name => ({ province: name, totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, dealerCount: 0, activeStaffCount: 0, collectionRate: 0, paymentBreakdown: {} }));
+
+  const DEFAULT_OVERALL = { totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, paymentBreakdown: {} };
+
+  const [provinces, setProvinces] = useState(DEFAULT_PROVINCES);
+  const [overall, setOverall] = useState(DEFAULT_OVERALL);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState(selectedProvince ? 'detail' : 'overview'); // 'overview' | 'detail'
+  const [view, setView] = useState(selectedProvince ? 'detail' : 'overview');
+  const [staffModal, setStaffModal] = useState(null); // province name or null
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -412,10 +469,12 @@ export default function Sales() {
       if (from) params.from = from;
       if (to) params.to = to;
       const res = await api.get('/sales/by-province', { params });
-      setProvinces(res.data.provinces || []);
-      setOverall(res.data.overall || null);
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+      setProvinces(res.data.provinces?.length ? res.data.provinces : DEFAULT_PROVINCES);
+      setOverall(res.data.overall || DEFAULT_OVERALL);
+    } catch {
+      setProvinces(DEFAULT_PROVINCES);
+      setOverall(DEFAULT_OVERALL);
+    } finally { setLoading(false); }
   }, [range, from, to]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
@@ -559,14 +618,12 @@ export default function Sales() {
       </div>
 
       {/* overall summary */}
-      {overall && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard icon={FiShoppingCart} label="Total Orders" value={overall.totalOrders}                  color="#2563EB" />
-          <StatCard icon={FiTrendingUp}   label="Total Sales"            value={formatCurrency(overall.totalSales)}   color="#8B5CF6" />
-          <StatCard icon={FiCheckCircle}  label="Total Collected"        value={formatCurrency(overall.collected)}    color="#22C55E" />
-          <StatCard icon={FiAlertCircle}  label="Total Outstanding"      value={formatCurrency(overall.outstanding)}  color="#EF4444" />
-        </div>
-      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard icon={FiShoppingCart} label="Total Orders"      value={overall.totalOrders}               color="#2563EB" />
+        <StatCard icon={FiTrendingUp}   label="Total Sales"       value={formatCurrency(overall.totalSales)}  color="#8B5CF6" />
+        <StatCard icon={FiCheckCircle}  label="Total Collected"   value={formatCurrency(overall.collected)}   color="#22C55E" />
+        <StatCard icon={FiAlertCircle}  label="Total Outstanding" value={formatCurrency(overall.outstanding)} color="#EF4444" />
+      </div>
 
       {/* trend chart (daily / weekly / monthly / yearly) */}
       <SalesTrendChart province={null} range={range} from={from} to={to} />
@@ -587,8 +644,17 @@ export default function Sales() {
             📍 Province-wise Sales Breakdown
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {provinces.map(p => (
-              <ProvinceCard key={p.province} data={p} onClick={() => openProvince(p.province)} />
+            {provinces.map(stat => (
+              <div key={stat.province} className="flex flex-col gap-2">
+                <ProvinceCard stat={stat} onClick={() => openProvince(stat.province)} />
+                <button
+                  onClick={() => setStaffModal(stat.province)}
+                  className="w-full text-xs font-medium py-1.5 rounded-xl border transition-colors"
+                  style={{ borderColor: (PROVINCE_COLORS[stat.province]?.border || '#94a3b8') + '66', color: PROVINCE_COLORS[stat.province]?.text || '#475569', background: PROVINCE_COLORS[stat.province]?.bg || '#f8fafc' }}
+                >
+                  <FiUsers size={11} className="inline mr-1" /> View Salespersons
+                </button>
+              </div>
             ))}
           </div>
         </>
@@ -597,10 +663,13 @@ export default function Sales() {
       {/* all orders table */}
       <div className="card p-4">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-          All Completed Orders
+          All Orders
         </h3>
         <OrdersTable province={null} range={range} from={from} to={to} />
       </div>
+
+      {/* staff modal */}
+      {staffModal && <ProvinceStaffModal province={staffModal} onClose={() => setStaffModal(null)} />}
     </div>
   );
 }

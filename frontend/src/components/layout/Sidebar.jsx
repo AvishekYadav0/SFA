@@ -3,23 +3,23 @@ import { useAuth } from '../../context/AuthContext';
 import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiTruck, FiDollarSign, FiBarChart2, FiUser, FiSettings,
-  FiLogOut, FiX, FiTrendingUp , FiPieChart
+  FiLogOut, FiX, FiTrendingUp, FiPieChart, FiMapPin, FiGitMerge
 } from 'react-icons/fi';
 
-
-
 const navItems = [
-  { to: '/dashboard',    icon: FiGrid,       label: 'Dashboard' },
-  { to: '/sales',        icon: FiPieChart,   label: 'Sales' },              // <-- new
-  { to: '/salespersons', icon: FiUsers,       label: 'Sales Persons',    roles: ['admin'] },
-  { to: '/dealers',      icon: FiShoppingBag, label: 'Dealers',          roles: ['admin'] },
-  { to: '/products',     icon: FiPackage,     label: 'Products',         roles: ['admin'] },
-  { to: '/orders',       icon: FiClipboard,   label: 'Order Plan' },
-  { to: '/lifting',      icon: FiTruck,       label: 'Lifting Plan' },
-  { to: '/collections',  icon: FiDollarSign,  label: 'Collection Plan' },
-  { to: '/reports',      icon: FiBarChart2,   label: 'Reports',          roles: ['admin'] },
-  { to: '/profile',      icon: FiUser,        label: 'Profile' },
-  { to: '/settings',     icon: FiSettings,    label: 'Staff Management', roles: ['admin'] },
+  { to: '/dashboard',    icon: FiGrid,        label: 'Dashboard' },
+  { to: '/daily-visits', icon: FiMapPin,       label: "Today's Shops" },
+  { to: '/sales',        icon: FiPieChart,     label: 'Sales' },
+  { to: '/pipeline',     icon: FiGitMerge,     label: 'Pipeline',         roles: ['admin'] },
+  { to: '/salespersons', icon: FiUsers,        label: 'Sales Persons',    roles: ['admin'] },
+  { to: '/dealers',      icon: FiShoppingBag,  label: 'Dealers',          roles: ['admin'] },
+  { to: '/products',     icon: FiPackage,      label: 'Products',         roles: ['admin'] },
+  { to: '/orders',       icon: FiClipboard,    label: 'Order Plan' },
+  { to: '/lifting',      icon: FiTruck,        label: 'Lifting Plan' },
+  { to: '/collections',  icon: FiDollarSign,   label: 'Collection Plan' },
+  { to: '/reports',      icon: FiBarChart2,    label: 'Reports',          roles: ['admin'] },
+  { to: '/profile',      icon: FiUser,         label: 'Profile' },
+  { to: '/settings',     icon: FiSettings,     label: 'Staff Management', roles: ['admin'] },
 ];
 
 export const Sidebar = ({ open, onClose }) => {
