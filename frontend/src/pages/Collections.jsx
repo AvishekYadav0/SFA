@@ -99,7 +99,7 @@ export default function Collections() {
   const [dealers, setDealers] = useState([]);
 
   const { register, handleSubmit, reset, control, setValue, formState: { isSubmitting } } = useForm({
-    defaultValues: { openingBalance: 0, currentOrderAmount: 0, week1: 0, week2: 0, week3: 0, week4: 0 }
+    defaultValues: { openingBalance: 0, currentOrderAmount: 0, week1: 0, week2: 0, week3: 0, week4: 0, province: '' }
   });
 
   useEffect(() => {
@@ -109,7 +109,10 @@ export default function Collections() {
 
   const handleDealerChange = (dealerId) => {
     const dealer = dealers.find(d => d._id === dealerId);
-    if (dealer) setValue('openingBalance', dealer.openingBalance || 0);
+    if (dealer) {
+      setValue('openingBalance', dealer.openingBalance || 0);
+      setValue('province', dealer.province || '');
+    }
   };
 
   const openCreate = () => {
@@ -161,7 +164,7 @@ export default function Collections() {
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">
             Dealer & Period
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="label text-xs">Dealer *</label>
               <select {...register('dealer', { required: 'Required' })}
@@ -170,6 +173,12 @@ export default function Collections() {
                 <option value="">Select Dealer...</option>
                 {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.area}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="label text-xs">Province *</label>
+              <input {...register('province', { required: 'Required' })}
+                readOnly
+                className="input text-sm bg-slate-100 cursor-not-allowed" placeholder="Auto-filled from dealer" />
             </div>
             <div>
               <label className="label text-xs">Month</label>
