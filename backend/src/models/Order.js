@@ -5,6 +5,8 @@ const orderItemSchema = new mongoose.Schema({
   productName:   String,
   quantity:      { type: Number, required: true },
   rate:          { type: Number, required: true },
+  discountPercent:{ type: Number, default: 0 },
+  discountAmount:{ type: Number, default: 0 },
   excisePercent: { type: Number, default: 0 },
   vatPercent:    { type: Number, default: 0 },
   basicAmount:   Number,
@@ -27,10 +29,18 @@ const orderSchema = new mongoose.Schema({
   totalVatAmount:    { type: Number, default: 0 },
   grandTotal:        { type: Number, default: 0 },
   remarks:           String,
+  approvalRemarks:   String,
+  reviewAction:      { type: String, enum: ['submitted', 'saved', 'approved', 'rejected', 'hold'], default: 'submitted' },
+  reviewHistory:     [{
+    action: String,
+    remarks: String,
+    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    performedAt: { type: Date, default: Date.now },
+  }],
   paymentType:       { type: String, enum: ['cash', 'online', 'credit'], default: 'cash' },
   status:            {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'cancelled', 'warehouse', 'out_for_delivery', 'delivered', 'completed'],
+    enum: ['pending', 'approved', 'rejected', 'cancelled', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'],
     default: 'pending',
   },
   // pipeline tracking

@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
   FiRefreshCw, FiCheck, FiX, FiArrowRight, FiPackage,
-  FiTruck, FiCheckCircle, FiClock, FiDollarSign,
+  FiTruck, FiCheckCircle, FiClock, FiDollarSign, FiEdit3,
+  FiMessageSquare,
 } from 'react-icons/fi';
 
 const PAYMENT_METHODS = [
@@ -20,12 +21,13 @@ const PAYMENT_METHODS = [
 ];
 
 const STAGES = [
-  { key: 'pending',          label: 'Pending',       icon: FiClock,        color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A',  next: 'approved',         nextLabel: 'Approve'  },
-  { key: 'approved',         label: 'Approved',      icon: FiCheck,        color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE',  next: 'warehouse',        nextLabel: 'Send to Warehouse' },
-  { key: 'warehouse',        label: 'Warehouse',     icon: FiPackage,      color: '#8B5CF6', bg: '#F5F3FF', border: '#DDD6FE',  next: 'out_for_delivery', nextLabel: 'Dispatch' },
+  { key: 'pending',          label: 'Pending Approval', icon: FiClock,      color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A',  next: 'approved',         nextLabel: 'Approve'  },
+  { key: 'hold',             label: 'On Hold',         icon: FiClock,      color: '#DC2626', bg: '#FEF2F2', border: '#FECACA',  next: 'approved',         nextLabel: 'Resume' },
+  { key: 'approved',         label: 'Approved',        icon: FiCheck,      color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE',  next: 'warehouse',        nextLabel: 'Send to Warehouse' },
+  { key: 'warehouse',        label: 'Warehouse',       icon: FiPackage,    color: '#8B5CF6', bg: '#F5F3FF', border: '#DDD6FE',  next: 'out_for_delivery', nextLabel: 'Dispatch' },
   { key: 'out_for_delivery', label: 'Out for Delivery', icon: FiTruck,     color: '#0891B2', bg: '#ECFEFF', border: '#A5F3FC',  next: 'delivered',        nextLabel: 'Mark Delivered' },
-  { key: 'delivered',        label: 'Delivered',     icon: FiCheckCircle,  color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0',  next: 'completed',        nextLabel: 'Complete' },
-  { key: 'completed',        label: 'Completed',     icon: FiCheckCircle,  color: '#15803D', bg: '#DCFCE7', border: '#86EFAC',  next: null,               nextLabel: null },
+  { key: 'delivered',        label: 'Delivered',       icon: FiCheckCircle,color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0',  next: 'completed',        nextLabel: 'Complete' },
+  { key: 'completed',        label: 'Completed',       icon: FiCheckCircle,color: '#15803D', bg: '#DCFCE7', border: '#86EFAC',  next: null,               nextLabel: null },
 ];
 
 const STATUS_MAP = Object.fromEntries(STAGES.map(s => [s.key, s]));
@@ -37,6 +39,7 @@ export default function Pipeline() {
   const [moving, setMoving] = useState(null);
   const [activeStage, setActiveStage] = useState('pending');
   const [payModal, setPayModal] = useState(null); // { orderId, grandTotal }
+  const [reviewModal, setReviewModal] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,11 +76,35 @@ export default function Pipeline() {
   const reject = async (orderId) => {
     setMoving(orderId);
     try {
-      await api.patch(`/orders/${orderId}/status`, { status: 'rejected' });
+      await api.patch(`/orders/${orderId}/review`, { action: 'reject', remarks: 'Rejected from pipeline' });
       toast.success('Order rejected');
       setOrders(prev => prev.filter(o => o._id !== orderId));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error');
+    } finally { setMoving(null); }
+  };
+
+  const hold = async (orderId) => {
+    setMoving(orderId);
+    try {
+      await api.patch(`/orders/${orderId}/review`, { action: 'hold', remarks: 'Placed on hold' });
+      toast.success('Order placed on hold');
+      setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 'hold', reviewAction: 'hold' } : o));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error');
+    } finally { setMoving(null); }
+  };
+
+  const saveReview = async (orderId, payload) => {
+    setMoving(orderId);
+    try {
+      const res = await api.patch(`/orders/${orderId}/review`, payload);
+      const updated = res.data.data;
+      toast.success('Review saved');
+      setOrders(prev => prev.map(o => o._id === orderId ? { ...o, ...updated } : o));
+      setReviewModal(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error saving review');
     } finally { setMoving(null); }
   };
 
@@ -142,6 +169,15 @@ export default function Pipeline() {
         />
       )}
 
+      {reviewModal && (
+        <ReviewModal
+          order={reviewModal}
+          onClose={() => setReviewModal(null)}
+          onSave={saveReview}
+          moving={moving === reviewModal._id}
+        />
+      )}
+
       {/* Kanban columns — desktop: all visible, mobile: active stage only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {STAGES.map(stage => {
@@ -175,6 +211,8 @@ export default function Pipeline() {
                       moving={moving === order._id}
                       onMove={move}
                       onReject={reject}
+                      onHold={hold}
+                      onReview={setReviewModal}
                       onComplete={openPayModal}
                       canApprove={user?.role === 'admin'}
                     />
@@ -190,7 +228,7 @@ export default function Pipeline() {
 }
 
 /* ── Order Card ──────────────────────────────────────── */
-function OrderCard({ order, stage, moving, onMove, onReject, onComplete, canApprove }) {
+function OrderCard({ order, stage, moving, onMove, onReject, onHold, onReview, onComplete, canApprove }) {
   const isDelivered = stage.key === 'delivered';
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3 space-y-2">
@@ -213,25 +251,41 @@ function OrderCard({ order, stage, moving, onMove, onReject, onComplete, canAppr
       </div>
 
       {/* Action buttons */}
-      {canApprove && stage.next && (
+      {canApprove && (
         <div className="flex gap-1 pt-1">
-          <button
-            onClick={() => isDelivered ? onComplete(order) : onMove(order._id, stage.next)}
-            disabled={moving}
-            className="flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded-lg text-white transition-opacity disabled:opacity-50"
-            style={{ background: stage.color }}>
-            {moving
-              ? <FiRefreshCw size={10} className="animate-spin" />
-              : isDelivered ? <FiDollarSign size={10} /> : <FiArrowRight size={10} />}
-            {stage.nextLabel}
-          </button>
-          {stage.key === 'pending' && (
+          {stage.next && (
             <button
-              onClick={() => onReject(order._id)}
+              onClick={() => isDelivered ? onComplete(order) : onMove(order._id, stage.next)}
               disabled={moving}
-              className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50">
-              <FiX size={12} />
+              className="flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded-lg text-white transition-opacity disabled:opacity-50"
+              style={{ background: stage.color }}>
+              {moving
+                ? <FiRefreshCw size={10} className="animate-spin" />
+                : isDelivered ? <FiDollarSign size={10} /> : <FiArrowRight size={10} />}
+              {stage.nextLabel}
             </button>
+          )}
+          {stage.key === 'pending' && (
+            <>
+              <button
+                onClick={() => onReview(order)}
+                disabled={moving}
+                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50">
+                <FiEdit3 size={12} />
+              </button>
+              <button
+                onClick={() => onHold(order._id)}
+                disabled={moving}
+                className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 disabled:opacity-50">
+                <FiClock size={12} />
+              </button>
+              <button
+                onClick={() => onReject(order._id)}
+                disabled={moving}
+                className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50">
+                <FiX size={12} />
+              </button>
+            </>
           )}
         </div>
       )}
@@ -255,6 +309,109 @@ function OrderCard({ order, stage, moving, onMove, onReject, onComplete, canAppr
 }
 
 /* ── Payment Modal ───────────────────────────────────── */
+function ReviewModal({ order, onClose, onSave, moving }) {
+  const [remarks, setRemarks] = useState(order?.approvalRemarks || '');
+  const [items, setItems] = useState(order?.items || []);
+
+  const updateItem = (index, field, value) => {
+    const next = [...items];
+    next[index] = { ...next[index], [field]: value };
+    setItems(next);
+  };
+
+  const submit = (action) => {
+    onSave(order._id, { action, remarks, items });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Review Order</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{order.orderNumber} · {order.dealer?.dealerName || 'Dealer'}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
+            <FiX size={16} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-600">Order Summary</span>
+              <span className="text-[11px] font-medium text-slate-500">{order.orderNumber || '—'}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+              <div><span className="font-medium">Date:</span> {formatDate(order.date)}</div>
+              <div><span className="font-medium">Dealer:</span> {order.dealer?.dealerName || '—'}</div>
+              <div><span className="font-medium">Salesperson:</span> {order.salesperson?.fullName || '—'}</div>
+              <div><span className="font-medium">Amount:</span> {formatCurrency(order.grandTotal || 0)}</div>
+            </div>
+            <div className="text-xs text-slate-600">
+              <span className="font-medium">Payment:</span> {order.paymentType || 'cash'}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-600 block mb-1">Approval Remarks</label>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              rows={3}
+              className="input text-sm w-full"
+              placeholder="Add review notes or changes"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-600 block mb-1">Edit Items</label>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-2 rounded-lg border border-slate-200 p-2">
+                  <input
+                    value={item.productName || ''}
+                    onChange={(e) => updateItem(idx, 'productName', e.target.value)}
+                    className="input text-sm"
+                    placeholder="Product"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    value={item.quantity || ''}
+                    onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
+                    className="input text-sm"
+                    placeholder="Qty"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.rate || ''}
+                    onChange={(e) => updateItem(idx, 'rate', Number(e.target.value))}
+                    className="input text-sm"
+                    placeholder="Rate"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 btn-secondary text-sm py-2">Cancel</button>
+          <button type="button" onClick={() => submit('save')} disabled={moving} className="flex-1 btn-secondary text-sm py-2">
+            {moving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button type="button" onClick={() => submit('approve')} disabled={moving} className="flex-1 btn-primary text-sm py-2">
+            Approve
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PaymentModal({ grandTotal, onConfirm, onClose }) {
   const [collectedAmount, setCollectedAmount] = useState(grandTotal || '');
   const [paymentMethod, setPaymentMethod] = useState('cash');

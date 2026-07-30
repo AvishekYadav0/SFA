@@ -1,6 +1,23 @@
 const Order = require('../models/Order');
 const Sale  = require('../models/Sale');
 
+const buildItemTotals = (items = []) => items.map(item => {
+  const basic  = (item.quantity || 0) * (item.rate || 0);
+  const excise = basic * ((item.excisePercent || 0) / 100);
+  const vat    = (basic + excise) * ((item.vatPercent || 0) / 100);
+  return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
+});
+
+const buildOrderTotals = (items = []) => {
+  const normalizedItems = buildItemTotals(items);
+  return normalizedItems.reduce((acc, item) => ({
+    totalBasicAmount:  acc.totalBasicAmount  + (item.basicAmount || 0),
+    totalExciseAmount: acc.totalExciseAmount + (item.exciseAmount || 0),
+    totalVatAmount:    acc.totalVatAmount    + (item.vatAmount || 0),
+    grandTotal:        acc.grandTotal        + (item.grandTotal || 0),
+  }), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
+};
+
 exports.getAll = async (req, res) => {
   try {
     const page  = parseInt(req.query.page)  || 1;
@@ -54,19 +71,8 @@ exports.getOne = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const items = req.body.items.map(item => {
-      const basic  = item.quantity * item.rate;
-      const excise = basic * (item.excisePercent / 100);
-      const vat    = (basic + excise) * (item.vatPercent / 100);
-      return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
-    });
-
-    const totals = items.reduce((acc, i) => ({
-      totalBasicAmount:  acc.totalBasicAmount  + i.basicAmount,
-      totalExciseAmount: acc.totalExciseAmount + i.exciseAmount,
-      totalVatAmount:    acc.totalVatAmount    + i.vatAmount,
-      grandTotal:        acc.grandTotal        + i.grandTotal,
-    }), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
+    const items = buildItemTotals(req.body.items || []);
+    const totals = buildOrderTotals(items);
 
     // Auto-assign province from staff; admin must provide it
     const province = req.user.role === 'staff' ? req.user.province : req.body.province;
@@ -84,17 +90,18 @@ exports.create = async (req, res) => {
 
     // Auto-create linked Sale record
     await Sale.create({
-      order:       saved._id,
-      orderNumber: saved.orderNumber,
-      salesperson: saved.salesperson,
-      dealer:      saved.dealer,
-      province:    saved.province,
-      area:        saved.area,
-      grandTotal:  saved.grandTotal,
-      paymentType: saved.paymentType || 'cash',
-      status:      'pending',
-      staffId:     req.user._id,
-      createdBy:   req.user._id,
+      order:          saved._id,
+      orderNumber:    saved.orderNumber,
+      salesperson:    saved.salesperson,
+      dealer:         saved.dealer,
+      province:       saved.province,
+      area:           saved.area,
+      grandTotal:     saved.grandTotal,
+      collectedAmount: saved.collectedAmount || 0,
+      paymentType:    saved.paymentMethod || 'cash',
+      status:         'pending',
+      staffId:        req.user._id,
+      createdBy:      req.user._id,
     });
 
     res.status(201).json({ success: true, data: saved });
@@ -118,19 +125,8 @@ exports.update = async (req, res) => {
     }
 
     if (req.body.items) {
-      req.body.items = req.body.items.map(item => {
-        const basic  = item.quantity * item.rate;
-        const excise = basic * (item.excisePercent / 100);
-        const vat    = (basic + excise) * (item.vatPercent / 100);
-        return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
-      });
-      const totals = req.body.items.reduce((acc, i) => ({
-        totalBasicAmount:  acc.totalBasicAmount  + i.basicAmount,
-        totalExciseAmount: acc.totalExciseAmount + i.exciseAmount,
-        totalVatAmount:    acc.totalVatAmount    + i.vatAmount,
-        grandTotal:        acc.grandTotal        + i.grandTotal,
-      }), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
-      Object.assign(req.body, totals);
+      req.body.items = buildItemTotals(req.body.items);
+      Object.assign(req.body, buildOrderTotals(req.body.items));
     }
 
     const data = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -144,6 +140,53 @@ exports.remove = async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.review = async (req, res) => {
+  try {
+    const { action, remarks, items } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Not found' });
+
+    const update = {};
+
+    if (Array.isArray(items)) {
+      const normalizedItems = buildItemTotals(items);
+      Object.assign(update, { items: normalizedItems, ...buildOrderTotals(normalizedItems) });
+    }
+
+    if (typeof remarks === 'string') update.approvalRemarks = remarks;
+
+    if (action === 'approve') {
+      update.status = 'approved';
+      update.approvedAt = new Date();
+      update.approvedBy = req.user._id;
+      update.reviewAction = 'approved';
+    } else if (action === 'reject') {
+      update.status = 'rejected';
+      update.reviewAction = 'rejected';
+    } else if (action === 'hold') {
+      update.status = 'hold';
+      update.reviewAction = 'hold';
+    } else {
+      update.reviewAction = 'saved';
+    }
+
+    const historyEntry = {
+      action: action || 'saved',
+      remarks: remarks || '',
+      performedBy: req.user._id,
+      performedAt: new Date(),
+    };
+
+    update.reviewHistory = [...(order.reviewHistory || []), historyEntry];
+
+    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true });
+    await Sale.findOneAndUpdate({ order: req.params.id }, { status: data.status });
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

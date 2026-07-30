@@ -330,26 +330,42 @@ export default function Orders() {
         {/* order header info */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">Order Information</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="label text-xs">Date *</label>
               <input {...register('date', { required: true })} type="date" className="input text-sm" />
             </div>
-            <div>
-              <label className="label text-xs">Sales Person *</label>
-              <select {...register('salesperson', { required: true })} className="input text-sm">
-                <option value="">Select...</option>
-                {salespersons.map(s => <option key={s._id} value={s._id}>{s.fullName}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label text-xs">Dealer *</label>
-              <select {...register('dealer', { required: true })} className="input text-sm"
-                onChange={e => handleDealerChange(e.target.value)}>
-                <option value="">Select...</option>
-                {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.area}</option>)}
-              </select>
-            </div>
+            {editData ? (
+              <div className="sm:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+                <div className="text-xs font-semibold text-slate-600">Order Summary</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div><span className="font-medium">Order:</span> {editData.orderNumber || '—'}</div>
+                  <div><span className="font-medium">Date:</span> {formatDate(editData.date)}</div>
+                  <div><span className="font-medium">Dealer:</span> {editData.dealer?.dealerName || editData.dealer || '—'}</div>
+                  <div><span className="font-medium">Salesperson:</span> {editData.salesperson?.fullName || editData.salesperson || '—'}</div>
+                  <div><span className="font-medium">Amount:</span> {formatCurrency(editData.grandTotal || 0)}</div>
+                  <div><span className="font-medium">Payment:</span> {editData.paymentType || 'cash'}</div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="label text-xs">Sales Person *</label>
+                  <select {...register('salesperson', { required: true })} className="input text-sm">
+                    <option value="">Select...</option>
+                    {salespersons.map(s => <option key={s._id} value={s._id}>{s.fullName}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label text-xs">Dealer *</label>
+                  <select {...register('dealer', { required: true })} className="input text-sm"
+                    onChange={e => handleDealerChange(e.target.value)}>
+                    <option value="">Select...</option>
+                    {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.area}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
             <div>
               <label className="label text-xs">Province *</label>
               <select {...register('province', { required: true })} className="input text-sm">
@@ -371,10 +387,16 @@ export default function Orders() {
                 <option value="credit">Credit</option>
               </select>
             </div>
-            <div className="col-span-2 sm:col-span-4">
+            <div className="col-span-1 sm:col-span-4">
               <label className="label text-xs">Remarks</label>
               <input {...register('remarks')} className="input text-sm" placeholder="Optional remarks..." />
             </div>
+            {editData && (
+              <>
+                <input type="hidden" {...register('salesperson')} />
+                <input type="hidden" {...register('dealer')} />
+              </>
+            )}
           </div>
         </div>
 

@@ -55,6 +55,7 @@ export const orderService = {
 
 export const saleService = {
   getRecords: (params) => api.get('/sales/records', { params }),
+  createManual: (data) => api.post('/sales/manual', data),
 };
 
 export const liftingService = {

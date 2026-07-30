@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
+import { saleService, dealerService, salespersonService, productService } from '../services';
 import { formatCurrency, formatDate } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import { Pagination } from '../components/common/Pagination';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 import {
   FiMapPin, FiUsers, FiShoppingCart, FiDollarSign,
   FiTrendingUp, FiRefreshCw, FiDownload, FiArrowLeft,
-  FiAlertCircle, FiCheckCircle, FiBarChart2,
+  FiAlertCircle, FiCheckCircle, FiBarChart2, FiPackage, FiEdit3,
 } from 'react-icons/fi';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -54,17 +56,27 @@ const CHART_GROUP_OPTIONS = [
   { value: 'year',  label: 'Yearly' },
 ];
 
+const SALE_STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'warehouse', label: 'Warehouse' },
+  { value: 'out_for_delivery', label: 'Out for Delivery' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'hold', label: 'Hold' },
+];
+
 /* ── Summary Stat Card ───────────────────────────────── */
 const StatCard = ({ icon: Icon, label, value, color, sub }) => (
-  <div className="card p-4 flex items-center gap-3">
+  <div className="card p-4 flex items-center gap-3 min-h-[80px]">
     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
       style={{ background: color + '22' }}>
       <Icon size={18} style={{ color }} />
     </div>
-    <div className="min-w-0">
+    <div className="min-w-0 overflow-hidden">
       <p className="text-xs text-slate-500 truncate">{label}</p>
       <p className="text-lg font-bold text-slate-900 dark:text-white truncate">{value}</p>
-      {sub && <p className="text-xs text-slate-400">{sub}</p>}
+      {sub && <p className="text-xs text-slate-400 truncate">{sub}</p>}
     </div>
   </div>
 );
@@ -461,6 +473,27 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState(selectedProvince ? 'detail' : 'overview');
   const [staffModal, setStaffModal] = useState(null); // province name or null
+  const [salespersons, setSalespersons] = useState([]);
+  const [dealers, setDealers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [manualSale, setManualSale] = useState({
+    date: new Date().toISOString().split('T')[0],
+    salesperson: '',
+    dealer: '',
+    province: '',
+    area: '',
+    items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+    grandTotal: '',
+    collectedAmount: '',
+    paymentType: 'cash',
+    status: 'completed',
+    remarks: '',
+  });
+  const [savingSale, setSavingSale] = useState(false);
+  const [entryMode, setEntryMode] = useState('choice');
+  const [eligibleOrders, setEligibleOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -478,6 +511,12 @@ export default function Sales() {
   }, [range, from, to]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  useEffect(() => {
+    salespersonService.getAll({ limit: 200 }).then(r => setSalespersons(r.data.data || [])).catch(() => setSalespersons([]));
+    dealerService.getAll({ limit: 200 }).then(r => setDealers(r.data.data || [])).catch(() => setDealers([]));
+    productService.getAll({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => setProducts([]));
+  }, []);
 
   // sync view with URL
   useEffect(() => {
@@ -596,6 +635,183 @@ export default function Sales() {
   );
 
   /* ── OVERVIEW (all provinces) ────────────────────────── */
+  const handleManualInput = (field, value) => {
+    setManualSale(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDealerChange = (dealerId) => {
+    const dealer = dealers.find(d => d._id === dealerId);
+    if (!dealer) {
+      setManualSale(prev => ({ ...prev, dealer: dealerId, province: '', area: '' }));
+      return;
+    }
+    setManualSale(prev => ({
+      ...prev,
+      dealer: dealer._id,
+      province: dealer.province || '',
+      area: dealer.area || '',
+    }));
+  };
+
+  const handleItemChange = (index, field, value) => {
+    setManualSale(prev => {
+      const items = (prev.items || []).slice();
+      items[index] = { ...items[index], [field]: value };
+      return { ...prev, items };
+    });
+  };
+
+  const handleOrderSelection = async (order) => {
+    setSelectedOrder(order);
+    setEntryMode('from-order');
+    const initialItems = (order.items || []).map(item => ({
+      product: item.product?._id || item.product || '',
+      productName: item.product?.productName || item.productName || '',
+      quantity: item.quantity || 1,
+      rate: item.rate || 0,
+      excisePercent: item.excisePercent || 0,
+      vatPercent: item.vatPercent || 0,
+      discountPercent: item.discountPercent || 0,
+      discountAmount: item.discountAmount || 0,
+    }));
+    setManualSale({
+      order: order._id,
+      date: new Date(order.date || Date.now()).toISOString().split('T')[0],
+      salesperson: order.salesperson?._id || order.salesperson || '',
+      dealer: order.dealer?._id || order.dealer || '',
+      province: order.province || '',
+      area: order.area || '',
+      items: initialItems.length ? initialItems : [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+      grandTotal: order.grandTotal || '',
+      collectedAmount: order.collectedAmount || '',
+      paymentType: order.paymentMethod || 'cash',
+      status: 'completed',
+      remarks: order.remarks || '',
+    });
+  };
+
+  const startManualFlow = () => {
+    setSelectedOrder(null);
+    setEntryMode('manual');
+    setManualSale({
+      date: new Date().toISOString().split('T')[0],
+      salesperson: '',
+      dealer: '',
+      province: '',
+      area: '',
+      items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+      grandTotal: '',
+      collectedAmount: '',
+      paymentType: 'cash',
+      status: 'completed',
+      remarks: '',
+    });
+  };
+
+  const loadEligibleOrders = useCallback(async () => {
+    if (!user?.role || user.role !== 'admin') return;
+    setLoadingOrders(true);
+    try {
+      const res = await api.get('/sales/eligible-orders');
+      setEligibleOrders(res.data.data || []);
+    } catch {
+      setEligibleOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, [user?.role]);
+
+  useEffect(() => { loadEligibleOrders(); }, [loadEligibleOrders]);
+
+  const handleProductSelect = (index, productId) => {
+    const prod = products.find(p => p._id === productId);
+    setManualSale(prev => {
+      const items = (prev.items || []).slice();
+      if (!prod) {
+        items[index] = { ...items[index], product: productId, productName: '', rate: 0, excisePercent: 0, vatPercent: 0 };
+      } else {
+        const excisePercent = prod.rate ? ((Number(prod.excisePerUnit || 0) / prod.rate) * 100) : 0;
+        items[index] = {
+          ...items[index],
+          product: prod._id,
+          productName: prod.productName,
+          rate: prod.rate || 0,
+          excisePercent: Number(excisePercent.toFixed(2)),
+          vatPercent: Number(prod.vatPercent || 0),
+        };
+      }
+      return { ...prev, items };
+    });
+  };
+
+  const addItemRow = () => {
+    setManualSale(prev => ({ ...prev, items: [...(prev.items||[]), { product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }] }));
+  };
+
+  const removeItemRow = (idx) => {
+    setManualSale(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  };
+
+  const computeItemTotals = (it) => {
+    const qty = Number(it.quantity) || 0;
+    const rate = Number(it.rate) || 0;
+    const basic = qty * rate;
+    const exc = basic * ((Number(it.excisePercent) || 0) / 100);
+    const vat = (basic + exc) * ((Number(it.vatPercent) || 0) / 100);
+    return { basic, exc, vat, total: basic + exc + vat };
+  };
+
+  const computeGrandTotal = () => {
+    const items = manualSale.items || [];
+    return items.reduce((s, it) => s + (computeItemTotals(it).total || 0), 0);
+  };
+
+  const submitManualSale = async () => {
+    const gt = Number(manualSale.grandTotal) || computeGrandTotal();
+    if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !gt) {
+      toast.error('Fill dealer, salesperson, amount, province and area before saving.');
+      return;
+    }
+    setSavingSale(true);
+    try {
+      const items = (manualSale.items || []).map(it => {
+        const t = computeItemTotals(it);
+        return { ...it, basicAmount: t.basic, exciseAmount: t.exc, vatAmount: t.vat, grandTotal: t.total };
+      });
+      const payload = {
+        ...manualSale,
+        items,
+        grandTotal: Number(manualSale.grandTotal) || items.reduce((s,i) => s + (i.grandTotal||0), 0),
+        collectedAmount: manualSale.collectedAmount ? Number(manualSale.collectedAmount) : (Number(manualSale.grandTotal) || items.reduce((s,i) => s + (i.grandTotal||0), 0)),
+      };
+
+      const endpoint = manualSale.order ? '/sales/from-order' : '/sales/manual';
+      await api.post(endpoint, payload);
+      toast.success(entryMode === 'from-order' ? 'Sale created from order and invoice generated.' : 'Manual sale saved and province totals refreshed.');
+      setEntryMode('choice');
+      setSelectedOrder(null);
+      setManualSale({
+        date: new Date().toISOString().split('T')[0],
+        salesperson: '',
+        dealer: '',
+        province: '',
+        area: '',
+        items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+        grandTotal: '',
+        collectedAmount: '',
+        paymentType: 'cash',
+        status: 'completed',
+        remarks: '',
+      });
+      fetchStats();
+      loadEligibleOrders();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save sale.');
+    } finally {
+      setSavingSale(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* header */}
@@ -603,7 +819,7 @@ export default function Sales() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Sales</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {user?.role === 'admin' ? 'All provinces — all active orders' : 'Your sales by province'}
+            {user?.role === 'admin' ? 'Enterprise sales entry workflow' : 'Your sales by province'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -616,6 +832,272 @@ export default function Sales() {
           )}
         </div>
       </div>
+
+      {user?.role === 'admin' && entryMode === 'choice' && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <button onClick={() => { setEntryMode('from-order'); loadEligibleOrders(); }} className="card p-6 text-left border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all bg-white">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <FiPackage size={22} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Create From Order</h2>
+                <p className="text-sm text-slate-500 mt-1">Convert an existing delivered order into a sale.</p>
+              </div>
+            </div>
+          </button>
+          <button onClick={startManualFlow} className="card p-6 text-left border-2 border-slate-200 hover:border-primary-400 hover:shadow-lg transition-all bg-white">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-primary-50 flex items-center justify-center text-primary-600">
+                <FiEdit3 size={22} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Manual Sale</h2>
+                <p className="text-sm text-slate-500 mt-1">Create a completely new sale without an existing order.</p>
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {user?.role === 'admin' && entryMode === 'from-order' && (
+        <div className="card p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wider">Order-Based Sale Entry</p>
+              <h2 className="text-lg font-semibold text-slate-900">Select a delivered order to convert</h2>
+            </div>
+            <button onClick={() => setEntryMode('choice')} className="text-sm text-slate-500 hover:text-primary-600">Back</button>
+          </div>
+          {loadingOrders ? (
+            <div className="grid gap-3 md:grid-cols-2">{Array(4).fill(0).map((_, i) => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)}</div>
+          ) : !eligibleOrders.length ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">No delivered orders are currently available to convert.</div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {eligibleOrders.map(order => (
+                <button key={order._id} onClick={() => handleOrderSelection(order)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-blue-400 hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-slate-900">{order.orderNumber}</p>
+                    <span className="text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Delivered</span>
+                  </div>
+                  <p className="text-sm text-slate-600 mt-2">{order.dealer?.dealerName} · {order.salesperson?.fullName}</p>
+                  <p className="text-xs text-slate-500 mt-2">{order.province} · {order.area}</p>
+                  <div className="flex items-center justify-between mt-3 text-sm">
+                    <span className="font-semibold text-slate-800">NPR {Number(order.grandTotal || 0).toFixed(2)}</span>
+                    <span className="text-primary-600">Open form</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(user?.role !== 'admin' || entryMode === 'manual' || selectedOrder) && (
+        <div className="grid gap-4 lg:grid-cols-[1.5fr,1fr]">
+          <div className="card p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">{selectedOrder ? 'Sales Entry From Order' : 'Manual Sale Entry'}</p>
+                <h2 className="text-lg font-semibold text-slate-900">{selectedOrder ? `Create sale from ${selectedOrder.orderNumber}` : 'Create a sale record'}</h2>
+              </div>
+              {user?.role === 'admin' && (
+                <button onClick={() => { setSelectedOrder(null); setEntryMode('choice'); }} className="text-sm text-slate-500 hover:text-primary-600">Choose another path</button>
+              )}
+            </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Order Number (Optional)</label>
+              <input value={manualSale.orderNumber || ''} onChange={e => handleManualInput('orderNumber', e.target.value)}
+                className="input mt-1 w-full text-xs" placeholder="Leave blank to use order reference" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Salesperson</label>
+              <select value={manualSale.salesperson} onChange={e => handleManualInput('salesperson', e.target.value)}
+                className="input mt-1 w-full text-xs">
+                <option value="">Select salesperson</option>
+                {salespersons.map(sp => (
+                  <option key={sp._id} value={sp._id}>{sp.fullName} · {sp.area}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Dealer</label>
+              <select value={manualSale.dealer} onChange={e => handleDealerChange(e.target.value)}
+                className="input mt-1 w-full text-xs">
+                <option value="">Select dealer</option>
+                {dealers.map(d => (
+                  <option key={d._id} value={d._id}>{d.dealerName} · {d.area}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Province</label>
+              <input value={manualSale.province} readOnly className="input mt-1 w-full text-xs bg-slate-50" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Area</label>
+              <input value={manualSale.area} readOnly className="input mt-1 w-full text-xs bg-slate-50" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Sale Amount</label>
+              <input value={manualSale.grandTotal} onChange={e => handleManualInput('grandTotal', e.target.value)}
+                type="number" min="0" step="0.01" className="input mt-1 w-full text-xs" placeholder="0.00" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Collected Amount</label>
+              <input value={manualSale.collectedAmount} onChange={e => handleManualInput('collectedAmount', e.target.value)}
+                type="number" min="0" step="0.01" className="input mt-1 w-full text-xs" placeholder="Leave blank = full amount" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Payment Type</label>
+              <select value={manualSale.paymentType} onChange={e => handleManualInput('paymentType', e.target.value)}
+                className="input mt-1 w-full text-xs">
+                {Object.entries(PAYMENT_COLORS).map(([key, value]) => (
+                  <option key={key} value={key}>{value.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Sale Status</label>
+              <select value={manualSale.status} onChange={e => handleManualInput('status', e.target.value)}
+                className="input mt-1 w-full text-xs">
+                {SALE_STATUS_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 mt-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Date</label>
+              <input type="date" value={manualSale.date} onChange={e => handleManualInput('date', e.target.value)}
+                className="input mt-1 w-full text-xs" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Remarks</label>
+              <input type="text" value={manualSale.remarks} onChange={e => handleManualInput('remarks', e.target.value)}
+                className="input mt-1 w-full text-xs" placeholder="Optional remarks..." />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold">Order Items</p>
+              <button type="button" onClick={addItemRow} className="text-xs px-3 py-1 rounded-lg border">Add Row</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-xs text-slate-500">
+                    <th className="p-2 text-left">#</th>
+                    <th className="p-2 text-left">Product Name</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-right">Rate</th>
+                    <th className="p-2 text-right">Discount %</th>
+                    <th className="p-2 text-right">Discount</th>
+                    <th className="p-2 text-right">Basic</th>
+                    <th className="p-2 text-right">Excise %</th>
+                    <th className="p-2 text-right">Excise Amt</th>
+                    <th className="p-2 text-right">VAT %</th>
+                    <th className="p-2 text-right">VAT Amt</th>
+                    <th className="p-2 text-right">Grand Total</th>
+                    <th className="p-2 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(manualSale.items || []).map((it, idx) => {
+                    const t = computeItemTotals(it);
+                    return (
+                      <tr key={idx} className="border-t">
+                        <td className="p-2 text-xs">{idx + 1}</td>
+                        <td className="p-2">
+                          <select value={it.product || ''} onChange={e => handleProductSelect(idx, e.target.value)}
+                            className="input text-xs w-full">
+                            <option value="">-- Select --</option>
+                            {products.map(p => (
+                              <option key={p._id} value={p._id}>{p.productName} · {p.sku}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" value={it.quantity} onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                            className="input text-xs w-20 text-right" />
+                        </td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" step="0.01" value={it.rate} onChange={e => handleItemChange(idx, 'rate', e.target.value)}
+                            className="input text-xs w-28 text-right" />
+                        </td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" max="100" value={it.discountPercent || 0} onChange={e => handleItemChange(idx, 'discountPercent', e.target.value)}
+                            className="input text-xs w-20 text-right" />
+                        </td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" step="0.01" value={it.discountAmount || 0} onChange={e => handleItemChange(idx, 'discountAmount', e.target.value)}
+                            className="input text-xs w-24 text-right" />
+                        </td>
+                        <td className="p-2 text-right text-xs">{t.basic.toFixed(2)}</td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" max="100" value={it.excisePercent} onChange={e => handleItemChange(idx, 'excisePercent', e.target.value)}
+                            className="input text-xs w-20 text-right" />
+                        </td>
+                        <td className="p-2 text-right text-xs">{t.exc.toFixed(2)}</td>
+                        <td className="p-2 text-right">
+                          <input type="number" min="0" max="100" value={it.vatPercent} onChange={e => handleItemChange(idx, 'vatPercent', e.target.value)}
+                            className="input text-xs w-20 text-right" />
+                        </td>
+                        <td className="p-2 text-right text-xs">{t.vat.toFixed(2)}</td>
+                        <td className="p-2 text-right font-medium">{t.total.toFixed(2)}</td>
+                        <td className="p-2 text-center">
+                          <button type="button" onClick={() => removeItemRow(idx)} className="text-xs text-red-600">Remove</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t">
+                    <td colSpan={4} className="p-2 text-right text-xs font-semibold">TOTALS →</td>
+                    <td className="p-2 text-right" />
+                    <td className="p-2 text-right" />
+                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).basic, 0).toFixed(2)}</td>
+                    <td className="p-2 text-right" />
+                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).exc, 0).toFixed(2)}</td>
+                    <td className="p-2 text-right" />
+                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).vat, 0).toFixed(2)}</td>
+                    <td className="p-2 text-right text-lg font-bold">NPR {computeGrandTotal().toFixed(2)}</td>
+                    <td className="p-2" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-slate-500">
+              Sale record created here updates province and payment summary totals.
+            </div>
+            <button onClick={submitManualSale} disabled={savingSale}
+              className="btn-primary text-xs px-4 py-2 disabled:opacity-60">
+              {savingSale ? 'Saving…' : (selectedOrder ? 'Create Sale' : 'Save Manual Sale')}
+            </button>
+          </div>
+        </div>
+
+        <div className="card p-4 overflow-hidden">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Quick Metrics</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+            <StatCard icon={FiShoppingCart} label="Province Count" value={provinces.length} color="#2563EB" />
+            <StatCard icon={FiDollarSign} label="Average Sale" value={formatCurrency(overall.totalSales / Math.max(1, overall.totalOrders))} color="#8B5CF6" />
+            <StatCard icon={FiCheckCircle} label="Collected Ratio" value={`${overall.totalSales ? Math.round((overall.collected / overall.totalSales) * 100) : 0}%`} color="#22C55E" />
+            <StatCard icon={FiAlertCircle} label="Outstanding" value={formatCurrency(overall.outstanding)} color="#EF4444" />
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* overall summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

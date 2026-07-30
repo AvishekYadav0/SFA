@@ -19,6 +19,9 @@ router.put('/:id', authorize('admin', 'staff'), c.update);
 // Delete an order (admin only)
 router.delete('/:id', authorize('admin'), c.remove);
 
+// Admin review actions (edit items, remarks, approve/reject/hold)
+router.patch('/:id/review', authorize('admin'), c.review);
+
 // Update order status (admin only)
 router.patch('/:id/status', authorize('admin'), c.updateStatus);
 
