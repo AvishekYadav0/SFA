@@ -571,7 +571,7 @@ export default function Sales() {
   if (view === 'detail') return (
     <div className="space-y-4">
       {/* header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button onClick={backToOverview}
             className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600 mb-1">
@@ -591,7 +591,7 @@ export default function Sales() {
 
       {/* province stats */}
       {provinceData && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard icon={FiShoppingCart} label="Completed Orders" value={provinceData.totalOrders} color="#2563EB" />
           <StatCard icon={FiTrendingUp}   label="Total Sales"      value={formatCurrency(provinceData.totalSales)} color="#8B5CF6" />
           <StatCard icon={FiCheckCircle}  label="Collected"        value={formatCurrency(provinceData.collected)} color="#22C55E" />
@@ -608,7 +608,7 @@ export default function Sales() {
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
             💳 Payment Methods
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {Object.entries(provinceData.paymentBreakdown || {}).filter(([, v]) => v?.amount > 0).map(([method, v]) => {
               const c = PAYMENT_COLORS[method] || { bg: '#f8fafc', text: '#475569', label: method };
               return (
@@ -815,14 +815,14 @@ export default function Sales() {
   return (
     <div className="space-y-4">
       {/* header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Sales</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {user?.role === 'admin' ? 'Enterprise sales entry workflow' : 'Your sales by province'}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Filters range={range} from={from} to={to} setParam={setParam} onRefresh={fetchStats} loading={loading} />
           {user?.role === 'admin' && (
             <button onClick={exportCSV} disabled={loading}
@@ -895,7 +895,7 @@ export default function Sales() {
       )}
 
       {(user?.role !== 'admin' || entryMode === 'manual' || selectedOrder) && (
-        <div className="grid gap-4 lg:grid-cols-[1.5fr,1fr]">
+        <div className="space-y-4">
           <div className="card p-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -907,7 +907,7 @@ export default function Sales() {
               )}
             </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
             <div>
               <label className="text-xs font-medium text-slate-600">Order Number (Optional)</label>
               <input value={manualSale.orderNumber || ''} onChange={e => handleManualInput('orderNumber', e.target.value)}
@@ -971,7 +971,7 @@ export default function Sales() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 mt-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-3">
             <div>
               <label className="text-xs font-medium text-slate-600">Date</label>
               <input type="date" value={manualSale.date} onChange={e => handleManualInput('date', e.target.value)}
@@ -1078,7 +1078,7 @@ export default function Sales() {
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-500">
-              Sale record created here updates province and payment summary totals.
+              Sale records created here update province and payment summary totals.
             </div>
             <button onClick={submitManualSale} disabled={savingSale}
               className="btn-primary text-xs px-4 py-2 disabled:opacity-60">
@@ -1101,7 +1101,7 @@ export default function Sales() {
 
       {/* overall summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={FiShoppingCart} label="Total Orders"      value={overall.totalOrders}               color="#2563EB" />
+        <StatCard icon={FiShoppingCart} label="Total Orders"      value={overall.totalOrders} color="#2563EB" />
         <StatCard icon={FiTrendingUp}   label="Total Sales"       value={formatCurrency(overall.totalSales)}  color="#8B5CF6" />
         <StatCard icon={FiCheckCircle}  label="Total Collected"   value={formatCurrency(overall.collected)}   color="#22C55E" />
         <StatCard icon={FiAlertCircle}  label="Total Outstanding" value={formatCurrency(overall.outstanding)} color="#EF4444" />
@@ -1159,15 +1159,17 @@ export default function Sales() {
 /* ── Filter Controls ─────────────────────────────────── */
 function Filters({ range, from, to, setParam, onRefresh, loading }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <select value={range} onChange={e => setParam('range', e.target.value)}
-        className="input text-xs py-2 w-36">
-        {RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <input type="date" value={from} onChange={e => setParam('from', e.target.value)}
-        className="input text-xs py-2 w-36" placeholder="From" />
-      <input type="date" value={to} onChange={e => setParam('to', e.target.value)}
-        className="input text-xs py-2 w-36" placeholder="To" />
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <select value={range} onChange={e => setParam('range', e.target.value)}
+          className="input text-xs py-2 w-full sm:w-36">
+          {RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <input type="date" value={from} onChange={e => setParam('from', e.target.value)}
+          className="input text-xs py-2 w-full sm:w-36" placeholder="From" />
+        <input type="date" value={to} onChange={e => setParam('to', e.target.value)}
+          className="input text-xs py-2 w-full sm:w-36" placeholder="To" />
+      </div>
       <button onClick={onRefresh}
         className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50">
         <FiRefreshCw size={14} className={loading ? 'animate-spin text-primary-600' : 'text-slate-500'} />

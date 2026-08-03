@@ -15,7 +15,7 @@ const PROVINCES = [
   'Koshi Province', 'Madhesh Province', 'Bagmati Province', 'Gandaki Province',
   'Lumbini Province', 'Karnali Province', 'Sudurpashchim Province',
 ];
-const DESIGNATIONS = ['Marketing Staff', 'Sales Executive', 'Supervisor'];
+const DESIGNATIONS = ['National Sales Manager', 'Regional Sales Manager', ' Area Sales Manager', ' Sales Executive', 'Dealer/Distributor '];
 const PROVINCE_COLORS = [
   { bg: 'bg-blue-50 dark:bg-blue-900/20',     border: 'border-blue-200 dark:border-blue-700',   icon: 'bg-blue-500',   text: 'text-blue-700 dark:text-blue-300' },
   { bg: 'bg-green-50 dark:bg-green-900/20',   border: 'border-green-200 dark:border-green-700', icon: 'bg-green-500',  text: 'text-green-700 dark:text-green-300' },
@@ -49,7 +49,7 @@ function StaffTable({ staff, color, onEdit, onResetPass, onToggle, onDelete }) {
               </td>
               <td className="text-slate-600 dark:text-slate-400">{u.email}</td>
               <td className="text-slate-600 dark:text-slate-400">{u.phone || '—'}</td>
-              <td><span className="badge-info">{u.designation || 'Marketing Staff'}</span></td>
+              <td><span className="badge-info">{u.designation || ' Sales Executive'}</span></td>
               <td>
                 <button onClick={() => onToggle(u)}
                   className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
@@ -82,7 +82,7 @@ function CreateStaffModal({ open, onClose, defaultProvince, onSuccess }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
-    if (open) reset({ province: defaultProvince || '', designation: 'Marketing Staff' });
+    if (open) reset({ province: defaultProvince || '', designation: 'Sales Executive' });
   }, [open, defaultProvince, reset]);
 
   const onSubmit = async (data) => {
@@ -171,7 +171,7 @@ function EditStaffModal({ open, onClose, staff, onSuccess }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
-    if (open && staff) reset({ name: staff.name, email: staff.email, phone: staff.phone || '', province: staff.province || '', designation: staff.designation || 'Marketing Staff' });
+    if (open && staff) reset({ name: staff.name, email: staff.email, phone: staff.phone || '', province: staff.province || '', designation: staff.designation || 'Sales Executive' });
   }, [open, staff, reset]);
 
   const onSubmit = async (data) => {
