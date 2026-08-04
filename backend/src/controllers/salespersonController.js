@@ -1,11 +1,12 @@
 const Salesperson = require('../models/Salesperson');
+const { scopeFilter } = require('../middleware/auth');
 
 const buildQuery = (query) => {
   const filter = {};
   if (query.search) filter.$or = [
-    { fullName: new RegExp(query.search, 'i') },
+    { fullName:   new RegExp(query.search, 'i') },
     { employeeId: new RegExp(query.search, 'i') },
-    { area: new RegExp(query.search, 'i') },
+    { area:       new RegExp(query.search, 'i') },
   ];
   if (query.status)   filter.status   = query.status;
   if (query.province) filter.province = query.province;
@@ -15,11 +16,9 @@ const buildQuery = (query) => {
 exports.getAll = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const filter = buildQuery(req.query);
-  // Staff can only see salespersons in their assigned province
-  if (req.user.role === 'staff' && req.user.province) {
-    filter.province = req.user.province;
-  }
+  // Merge query filters with scope filter (scope wins on province/area)
+  const scope = scopeFilter(req);
+  const filter = { ...buildQuery(req.query), ...scope };
   const total = await Salesperson.countDocuments(filter);
   const data = await Salesperson.find(filter).sort('-createdAt').skip((page - 1) * limit).limit(limit);
   res.json({ success: true, data, total, page, pages: Math.ceil(total / limit) });

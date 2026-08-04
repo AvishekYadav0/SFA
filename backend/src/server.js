@@ -31,6 +31,7 @@ app.use('/api/orders',      require('./routes/orders'));
 app.use('/api/lifting',     require('./routes/lifting'));
 app.use('/api/collections', require('./routes/collections'));
 app.use('/api/dashboard',   require('./routes/dashboard'));
+app.use('/api/claims',      require('./routes/claims'));
 app.use('/api/reports',      require('./routes/reports'));
 app.use('/api/targets',      require('./routes/targets'));
 app.use('/api/soledealers',  require('./routes/soledealers'));
@@ -67,30 +68,25 @@ function isPortFree(port) {
 }
 
 async function startServer() {
-  const preferredPort = parseInt(process.env.PORT) || 8000;
-  const fallbackPorts = [preferredPort, 8080, 3000, 3001, 5000, 5001];
+  const port = parseInt(process.env.PORT) || 8000;
 
-  for (const port of fallbackPorts) {
-    if (await isPortFree(port)) {
-      app.listen(port, '0.0.0.0', () => {
-        console.log(`SFA Server running on port ${port}`);
+  if (await isPortFree(port)) {
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`✅ SFA Server running on port ${port}`);
 
-        // ── Keep-alive: ping self every 14 min to prevent free-tier sleep ──
-        if (process.env.SELF_URL) {
-          setInterval(() => {
-            const url = `${process.env.SELF_URL}/api/health`;
-            const client = url.startsWith('https') ? require('https') : require('http');
-            client.get(url, (res) => {
-              console.log(`Keep-alive ping: ${res.statusCode}`);
-            }).on('error', () => {});
-          }, 14 * 60 * 1000);
-        }
-      });
-      return;
-    }
+      // ── Keep-alive: ping self every 14 min to prevent free-tier sleep ──
+      if (process.env.SELF_URL) {
+        setInterval(() => {
+          const url = `${process.env.SELF_URL}/api/health`;
+          const client = url.startsWith('https') ? require('https') : require('http');
+          client.get(url, (res) => console.log(`Keep-alive ping: ${res.statusCode}`)).on('error', () => {});
+        }, 14 * 60 * 1000);
+      }
+    });
+  } else {
+    console.error(`❌ ERROR: Port ${port} is already in use. Please close the other process or set a different PORT in your .env file.`);
+    process.exit(1);
   }
-  console.error('No free port found. Please set PORT in .env to an available port.');
-  process.exit(1);
 }
 
 startServer();

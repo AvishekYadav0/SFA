@@ -3,7 +3,9 @@ const c = require('../controllers/dealerController');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect);
-router.route('/').get(c.getAll).post(authorize('admin', 'staff'), c.create);
-router.route('/:id').get(c.getOne).put(authorize('admin', 'staff'), c.update).delete(authorize('admin'), c.remove);
+router.get('/my-profile', c.getMyProfile);
+router.route('/').get(c.getAll).post(authorize('admin', 'se', 'asm', 'rsm', 'nsm'), c.create);
+router.route('/:id').get(c.getOne).put(authorize('admin', 'se', 'asm', 'rsm', 'nsm'), c.update).delete(authorize('admin'), c.remove);
+router.post('/:id/link-user', authorize('admin'), c.linkUser);
 
 module.exports = router;

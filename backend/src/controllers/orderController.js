@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Sale  = require('../models/Sale');
+const { scopeFilter } = require('../middleware/auth');
 
 const buildItemTotals = (items = []) => items.map(item => {
   const basic  = (item.quantity || 0) * (item.rate || 0);
@@ -22,20 +23,16 @@ exports.getAll = async (req, res) => {
   try {
     const page  = parseInt(req.query.page)  || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const filter = {};
+    const filter = { ...scopeFilter(req) };
 
-    if (req.query.status)     filter.status     = req.query.status;
+    if (req.query.status)      filter.status      = req.query.status;
     if (req.query.salesperson) filter.salesperson = req.query.salesperson;
-    if (req.query.dealer)     filter.dealer     = req.query.dealer;
-    if (req.query.province)   filter.province   = req.query.province;
+    if (req.query.dealer)      filter.dealer      = req.query.dealer;
+    // Province/area override only for admin/nsm (lower roles are already locked by scopeFilter)
+    if (req.query.province && ['admin', 'nsm'].includes(req.user.role))
+      filter.province = req.query.province;
     if (req.query.startDate && req.query.endDate)
       filter.date = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
-
-    // Staff: restrict to their own province and their own records
-    if (req.user.role === 'staff') {
-      filter.province = req.user.province;
-      filter.staffId  = req.user._id;
-    }
 
     const total = await Order.countDocuments(filter);
     const data  = await Order.find(filter)
@@ -59,9 +56,13 @@ exports.getOne = async (req, res) => {
       .populate('salesperson').populate('dealer').populate('items.product').populate('staffId', 'name province');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
 
-    // Staff can only view their own province records
-    if (req.user.role === 'staff' && data.province !== req.user.province)
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    // Non-admin/nsm can only view records in their scope
+    if (!['admin', 'nsm'].includes(req.user.role)) {
+      const scope = scopeFilter(req);
+      const allowed = Object.entries(scope).every(([k, v]) => String(data[k]) === String(v));
+      if (!allowed)
+        return res.status(403).json({ success: false, message: 'Access denied' });
+    }
 
     res.json({ success: true, data });
   } catch (err) {
@@ -75,7 +76,7 @@ exports.create = async (req, res) => {
     const totals = buildOrderTotals(items);
 
     // Auto-assign province from staff; admin must provide it
-    const province = req.user.role === 'staff' ? req.user.province : req.body.province;
+    const province = ['admin', 'nsm'].includes(req.user.role) ? req.body.province : req.user.province;
     if (!province) return res.status(400).json({ success: false, message: 'Province is required' });
 
     const data = await Order.create({
@@ -115,12 +116,11 @@ exports.update = async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Not found' });
 
-    if (req.user.role === 'staff') {
+    if (req.user.role !== 'admin' && req.user.role !== 'nsm') {
       if (order.staffId?.toString() !== req.user._id.toString())
         return res.status(403).json({ success: false, message: 'Access denied' });
       if (order.status !== 'pending')
         return res.status(403).json({ success: false, message: 'Can only edit pending orders' });
-      // Staff cannot change province
       delete req.body.province;
     }
 

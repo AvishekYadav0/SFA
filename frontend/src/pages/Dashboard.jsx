@@ -164,8 +164,10 @@ export default function Dashboard() {
               <div key={i} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 flex-shrink-0">{i + 1}</div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{p.productName || 'Unknown'}</p>
-                  <p className="text-xs text-slate-500">{p.totalQty} units</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{p.productName}</p>
+                  <p className="text-xs text-slate-500">
+                    {[p.brand, p.category, p.sku].filter(Boolean).join(' · ')} &nbsp;·&nbsp; {p.totalQty} {p.unit || 'units'}
+                  </p>
                 </div>
                 <p className="text-sm font-bold text-primary-600 flex-shrink-0">{formatCurrency(p.totalAmount)}</p>
               </div>

@@ -3,20 +3,21 @@ import { useAuth } from '../../context/AuthContext';
 import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiTruck, FiDollarSign, FiBarChart2, FiUser, FiSettings,
-  FiLogOut, FiX, FiTrendingUp, FiPieChart, FiMapPin, FiGitMerge
+  FiLogOut, FiX, FiTrendingUp, FiPieChart, FiMapPin, FiGitMerge, FiFileText
 } from 'react-icons/fi';
 
 const navItems = [
   { to: '/dashboard',    icon: FiGrid,        label: 'Dashboard' },
-  { to: '/daily-visits', icon: FiMapPin,       label: "Today's Shops" },
-  { to: '/sales',        icon: FiPieChart,     label: 'Sales' },
+  { to: '/daily-visits', icon: FiMapPin,       label: "Today's Shops",    roles: ['se','asm','rsm','nsm','admin'] },
+  { to: '/sales',        icon: FiPieChart,     label: 'Sales',            roles: ['se','asm','rsm','nsm','admin'] },
   { to: '/pipeline',     icon: FiGitMerge,     label: 'Pipeline',         roles: ['admin'] },
   { to: '/salespersons', icon: FiUsers,        label: 'Sales Persons',    roles: ['admin'] },
   { to: '/dealers',      icon: FiShoppingBag,  label: 'Dealers',          roles: ['admin'] },
   { to: '/products',     icon: FiPackage,      label: 'Products',         roles: ['admin'] },
-  { to: '/orders',       icon: FiClipboard,    label: 'Order Plan' },
-  { to: '/lifting',      icon: FiTruck,        label: 'Lifting Plan' },
-  { to: '/collections',  icon: FiDollarSign,   label: 'Collection Plan' },
+  { to: '/orders',       icon: FiClipboard,    label: 'Order Plan',       roles: ['se','asm','rsm','nsm','admin'] },
+  { to: '/lifting',      icon: FiTruck,        label: 'Lifting Plan',     roles: ['se','asm','rsm','nsm','admin'] },
+  { to: '/collections',  icon: FiDollarSign,   label: 'Collection Plan',  roles: ['se','asm','rsm','nsm','admin'] },
+  { to: '/claims',       icon: FiFileText,     label: 'Claims',           roles: ['se','asm','rsm','nsm','admin'] },
   { to: '/reports',      icon: FiBarChart2,    label: 'Reports',          roles: ['admin'] },
   { to: '/profile',      icon: FiUser,         label: 'Profile' },
   { to: '/settings',     icon: FiSettings,     label: 'Staff Management', roles: ['admin'] },

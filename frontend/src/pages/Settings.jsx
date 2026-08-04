@@ -15,7 +15,6 @@ const PROVINCES = [
   'Koshi Province', 'Madhesh Province', 'Bagmati Province', 'Gandaki Province',
   'Lumbini Province', 'Karnali Province', 'Sudurpashchim Province',
 ];
-const DESIGNATIONS = ['National Sales Manager', 'Regional Sales Manager', ' Area Sales Manager', ' Sales Executive', 'Dealer/Distributor '];
 const PROVINCE_COLORS = [
   { bg: 'bg-blue-50 dark:bg-blue-900/20',     border: 'border-blue-200 dark:border-blue-700',   icon: 'bg-blue-500',   text: 'text-blue-700 dark:text-blue-300' },
   { bg: 'bg-green-50 dark:bg-green-900/20',   border: 'border-green-200 dark:border-green-700', icon: 'bg-green-500',  text: 'text-green-700 dark:text-green-300' },
@@ -25,6 +24,15 @@ const PROVINCE_COLORS = [
   { bg: 'bg-teal-50 dark:bg-teal-900/20',     border: 'border-teal-200 dark:border-teal-700',   icon: 'bg-teal-500',   text: 'text-teal-700 dark:text-teal-300' },
   { bg: 'bg-red-50 dark:bg-red-900/20',       border: 'border-red-200 dark:border-red-700',     icon: 'bg-red-500',    text: 'text-red-700 dark:text-red-300' },
 ];
+// Role → display label map
+const ROLE_OPTIONS = [
+  { value: 'nsm',    label: 'National Sales Manager (NSM)' },
+  { value: 'rsm',    label: 'Regional Sales Manager (RSM)' },
+  { value: 'asm',    label: 'Area Sales Manager (ASM)' },
+  { value: 'se',     label: 'Sales Executive (SE)' },
+  { value: 'dealer', label: 'Dealer / Distributor' },
+];
+const ROLE_LABEL = Object.fromEntries(ROLE_OPTIONS.map(r => [r.value, r.label]));
 
 // ── Shared staff table row actions ──────────────────────────────────────────
 function StaffTable({ staff, color, onEdit, onResetPass, onToggle, onDelete }) {
@@ -33,7 +41,7 @@ function StaffTable({ staff, color, onEdit, onResetPass, onToggle, onDelete }) {
     <div className="table-wrapper">
       <table className="table">
         <thead>
-          <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Designation</th><th>Status</th><th>Actions</th></tr>
+          <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {staff.map((u, i) => (
@@ -49,7 +57,7 @@ function StaffTable({ staff, color, onEdit, onResetPass, onToggle, onDelete }) {
               </td>
               <td className="text-slate-600 dark:text-slate-400">{u.email}</td>
               <td className="text-slate-600 dark:text-slate-400">{u.phone || '—'}</td>
-              <td><span className="badge-info">{u.designation || ' Sales Executive'}</span></td>
+              <td><span className="badge-info">{ROLE_LABEL[u.role] || u.role}</span></td>
               <td>
                 <button onClick={() => onToggle(u)}
                   className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
@@ -82,7 +90,7 @@ function CreateStaffModal({ open, onClose, defaultProvince, onSuccess }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
-    if (open) reset({ province: defaultProvince || '', designation: 'Sales Executive' });
+    if (open) reset({ province: defaultProvince || '', role: 'se' });
   }, [open, defaultProvince, reset]);
 
   const onSubmit = async (data) => {
@@ -149,9 +157,13 @@ function CreateStaffModal({ open, onClose, defaultProvince, onSuccess }) {
             </select>
           </div>
           <div>
-            <label className="label">Designation</label>
-            <select {...register('designation')} className="input">
-              {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            <label className="label">Assign Area (for ASM/SE)</label>
+            <input {...register('area')} className="input" placeholder="e.g. Kathmandu Valley" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Role</label>
+            <select {...register('role')} className="input">
+              {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
         </div>
@@ -171,7 +183,10 @@ function EditStaffModal({ open, onClose, staff, onSuccess }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
-    if (open && staff) reset({ name: staff.name, email: staff.email, phone: staff.phone || '', province: staff.province || '', designation: staff.designation || 'Sales Executive' });
+    if (open && staff) reset({
+      name: staff.name, email: staff.email, phone: staff.phone || '',
+      province: staff.province || '', area: staff.area || '', role: staff.role || 'se',
+    });
   }, [open, staff, reset]);
 
   const onSubmit = async (data) => {
@@ -211,10 +226,14 @@ function EditStaffModal({ open, onClose, staff, onSuccess }) {
               {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+          <div>
+            <label className="label">Assign Area</label>
+            <input {...register('area')} className="input" placeholder="e.g. Kathmandu Valley" />
+          </div>
           <div className="sm:col-span-2">
-            <label className="label">Designation</label>
-            <select {...register('designation')} className="input">
-              {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            <label className="label">Role</label>
+            <select {...register('role')} className="input">
+              {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
         </div>
@@ -300,9 +319,11 @@ export default function Settings() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  const staffUsers = users.filter(u => u.role === 'staff');
+  // All non-admin users are "staff" in the new hierarchy
+  const staffUsers = users.filter(u => u.role !== 'admin');
   const adminUsers = users.filter(u => u.role === 'admin');
-  const unassigned = staffUsers.filter(u => !u.province);
+  // Unassigned = no province AND role needs one (rsm/asm/se)
+  const unassigned = staffUsers.filter(u => !u.province && ['rsm', 'asm', 'se'].includes(u.role));
 
   const provinceCounts = PROVINCES.reduce((acc, p) => {
     acc[p] = staffUsers.filter(u => u.province === p).length;
@@ -354,7 +375,7 @@ export default function Settings() {
             </button>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedProvince}</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{provinceStaff.length} staff account{provinceStaff.length !== 1 ? 's' : ''}</p>
+              <p className="text-sm text-slate-500 mt-0.5">{provinceStaff.length} user{provinceStaff.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
           <button className="btn-primary" onClick={() => setCreateModal({ open: true, province: selectedProvince })}>
@@ -447,7 +468,7 @@ export default function Settings() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Staff Management</h1>
-          <p className="text-sm text-slate-500 mt-1">{staffUsers.length} staff · Province-wise assignment</p>
+          <p className="text-sm text-slate-500 mt-1">{staffUsers.length} users · Province-wise assignment</p>
         </div>
         <button className="btn-primary" onClick={() => setCreateModal({ open: true, province: '' })}>
           <FiPlus /> Add Staff

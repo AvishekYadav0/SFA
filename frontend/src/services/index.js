@@ -10,7 +10,7 @@ export const authService = {
 };
 
 export const userService = {
-  getAll:        ()         => api.get('/users'),
+  getAll:        (params)  => api.get('/users', { params }),
   getOne:        (id)       => api.get(`/users/${id}`),
   createStaff:   (data)     => api.post('/users/create-staff', data),
   update:        (id, data) => api.put(`/users/${id}`, data),
@@ -29,11 +29,13 @@ export const salespersonService = {
 };
 
 export const dealerService = {
-  getAll:  (params) => api.get('/dealers', { params }),
-  getOne:  (id)     => api.get(`/dealers/${id}`),
-  create:  (data)   => api.post('/dealers', data),
-  update:  (id, data) => api.put(`/dealers/${id}`, data),
-  delete:  (id)     => api.delete(`/dealers/${id}`),
+  getAll:       (params) => api.get('/dealers', { params }),
+  getOne:       (id)     => api.get(`/dealers/${id}`),
+  getMyProfile: ()       => api.get('/dealers/my-profile'),
+  create:       (data)   => api.post('/dealers', data),
+  update:       (id, data) => api.put(`/dealers/${id}`, data),
+  delete:       (id)     => api.delete(`/dealers/${id}`),
+  linkUser:     (id, userId) => api.post(`/dealers/${id}/link-user`, { userId }),
 };
 
 export const productService = {
@@ -75,7 +77,15 @@ export const collectionService = {
 };
 
 export const dashboardService = {
-  get: () => api.get('/dashboard'),
+  get:      () => api.get('/dashboard/stats'),
+  getStats: () => api.get('/dashboard/stats'),
+};
+
+export const claimService = {
+  getAll:     ()         => api.get('/claims'),
+  create:     (data)     => api.post('/claims', data),
+  process:    (id, data) => api.post(`/claims/${id}/action`, data),
+  resubmit:   (id, data) => api.post(`/claims/${id}/resubmit`, data),
 };
 
 export const reportService = {

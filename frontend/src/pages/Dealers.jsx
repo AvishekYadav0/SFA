@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { dealerService } from '../services';
+import { dealerService, userService } from '../services';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import {
-  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag
+  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -37,6 +37,8 @@ export default function Dealers() {
   const [modal, setModal]                       = useState({ open: false, data: null, province: '' });
   const [confirm, setConfirm]                   = useState({ open: false, id: null });
   const [deleting, setDeleting]                 = useState(false);
+  const [linkModal, setLinkModal]               = useState({ open: false, dealer: null });
+  const [allUsers, setAllUsers]                 = useState([]);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
@@ -59,6 +61,23 @@ export default function Dealers() {
   const provinceData = selectedProvince
     ? allData.filter(d => d.province === selectedProvince)
     : [];
+
+  const openLinkModal = async (dealer) => {
+    try {
+      const res = await userService.getAll({ role: 'dealer', limit: 1000 });
+      setAllUsers(res.data.data || []);
+    } catch { setAllUsers([]); }
+    setLinkModal({ open: true, dealer });
+  };
+
+  const handleLinkUser = async (userId) => {
+    try {
+      await dealerService.linkUser(linkModal.dealer._id, userId);
+      toast.success('User linked to dealer!');
+      setLinkModal({ open: false, dealer: null });
+      fetchAll();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed to link user'); }
+  };
 
   const openCreate = (province = '') => {
     reset({ province, status: 'active', openingBalance: 0, creditLimit: 0 });
@@ -165,6 +184,11 @@ export default function Dealers() {
                       <td><StatusBadge status={d.status} /></td>
                       <td>
                         <div className="flex gap-1.5">
+                          <button onClick={() => openLinkModal(d)}
+                            title={d.linkedUser ? 'Change linked user' : 'Link user account'}
+                            className={`p-1.5 rounded-lg transition-colors ${d.linkedUser ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                            <FiLink size={14} />
+                          </button>
                           <button onClick={() => openEdit(d)}
                             className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors">
                             <FiEdit2 size={14} />
@@ -186,6 +210,12 @@ export default function Dealers() {
         <DealerModal
           modal={modal} onClose={() => setModal({ open: false, data: null, province: '' })}
           onSubmit={handleSubmit(onSubmit)} register={register} errors={errors} isSubmitting={isSubmitting}
+        />
+        <LinkUserModal
+          modal={linkModal}
+          users={allUsers}
+          onClose={() => setLinkModal({ open: false, dealer: null })}
+          onLink={handleLinkUser}
         />
         <ConfirmDialog open={confirm.open} title="Delete Dealer"
           message="This will permanently delete this dealer. This action cannot be undone."
@@ -266,6 +296,51 @@ export default function Dealers() {
   );
 }
 
+function LinkUserModal({ modal, users, onClose, onLink }) {
+  const [selected, setSelected] = useState('');
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    if (modal.open) setSelected(modal.dealer?.linkedUser?._id || modal.dealer?.linkedUser || '');
+  }, [modal]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selected) return;
+    setLinking(true);
+    await onLink(selected);
+    setLinking(false);
+  };
+
+  return (
+    <Modal open={modal.open} onClose={onClose} title="Link User Account" size="sm">
+      <p className="text-sm text-slate-500 mb-4">
+        Link a dealer-role user account to <strong>{modal.dealer?.dealerName}</strong> so they can log in to the dealer portal.
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="label">Select Dealer User</label>
+          <select value={selected} onChange={e => setSelected(e.target.value)} className="input" required>
+            <option value="">-- Select a user --</option>
+            {users.map(u => (
+              <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+            ))}
+          </select>
+          {users.length === 0 && (
+            <p className="text-xs text-amber-600 mt-1">No dealer-role users found. Create one in Settings first.</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={linking || !selected}>
+            {linking ? 'Linking...' : 'Link User'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting }) {
   return (
     <Modal open={modal.open} onClose={onClose}
@@ -294,6 +369,10 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
           <div>
             <label className="label">PAN Number</label>
             <input {...register('panNumber')} className="input" placeholder="e.g. 123456789" />
+          </div>
+          <div>
+            <label className="label">VAT Number</label>
+            <input {...register('vatNumber')} className="input" placeholder="e.g. 300123456" />
           </div>
         </div>
 

@@ -51,6 +51,7 @@ exports.login = async (req, res) => {
     if (!user)
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
 
+    // Optional: validate the role the login form claims
     if (role && user.role !== role)
       return res.status(401).json({ success: false, message: `No ${role} account found with this email` });
 
@@ -74,10 +75,9 @@ exports.login = async (req, res) => {
         phone:        user.phone,
         companyName:  user.companyName,
         employeeId:   user.employeeId,
-        designation:  user.designation,
         province:     user.province,
+        area:         user.area,
         district:     user.district,
-        assignedArea: user.assignedArea,
         isActive:     user.isActive,
       },
     });

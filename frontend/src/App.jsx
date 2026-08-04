@@ -23,28 +23,27 @@ const Profile = lazy(() => import('./pages/Profile'));
 const DailyVisits = lazy(() => import('./pages/DailyVisits'));
 const Pipeline    = lazy(() => import('./pages/Pipeline'));
 const Settings    = lazy(() => import('./pages/Settings'));
-
+const Claims      = lazy(() => import('./pages/Claims'));
+const DealerPortal = lazy(() => import('./pages/DealerPortal'));
 
 // Admin-only Route
 const AdminRoute = ({ children }) => {
   const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return user.role === 'admin' ? children : <Navigate to="/dashboard" replace />;
+};
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return user.role === 'admin'
-    ? children
-    : <Navigate to="/dashboard" replace />;
+// Blocks dealer role from staff-only pages
+const StaffRoute = ({ children }) => {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return user.role === 'dealer' ? <Navigate to="/dashboard" replace /> : children;
 };
 
 // Logged-in Route
 const PrivateRoute = ({ children }) => {
   const { user } = useAuth();
-
-  return user
-    ? children
-    : <Navigate to="/login" replace />;
+  return user ? children : <Navigate to="/login" replace />;
 };
 
 const AppRoutes = () => {
@@ -110,24 +109,25 @@ const AppRoutes = () => {
           }
         >
 
-          {/* Dashboard */}
+          {/* Dashboard — dealer gets their own portal */}
           <Route
             path="/dashboard"
             element={
-              user?.role === 'admin'
-                ? <Dashboard />
-                : <StaffDashboard />
+              user?.role === 'admin' ? <Dashboard />
+              : user?.role === 'dealer' ? <DealerPortal />
+              : <StaffDashboard />
             }
           />
 
-          {/* Staff + Admin */}
-          <Route path="/daily-visits" element={<DailyVisits />} />
-          <Route path="/sales" element={<Sales />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/pipeline" element={<AdminRoute><Pipeline /></AdminRoute>} />
-          <Route path="/lifting" element={<Lifting />} />
-          <Route path="/collections" element={<Collections />} />
-          <Route path="/profile" element={<Profile />} />
+          {/* Staff + Admin (blocked for dealer) */}
+          <Route path="/daily-visits" element={<StaffRoute><DailyVisits /></StaffRoute>} />
+          <Route path="/sales"        element={<StaffRoute><Sales /></StaffRoute>} />
+          <Route path="/orders"       element={<StaffRoute><Orders /></StaffRoute>} />
+          <Route path="/pipeline"     element={<AdminRoute><Pipeline /></AdminRoute>} />
+          <Route path="/lifting"      element={<StaffRoute><Lifting /></StaffRoute>} />
+          <Route path="/collections"  element={<StaffRoute><Collections /></StaffRoute>} />
+          <Route path="/profile"      element={<Profile />} />
+          <Route path="/claims"       element={<StaffRoute><Claims /></StaffRoute>} />
 
           {/* Admin Only */}
           <Route

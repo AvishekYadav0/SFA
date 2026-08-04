@@ -11,18 +11,22 @@ const PROVINCES = [
   'Sudurpashchim Province',
 ];
 
+// Role hierarchy (index = power level, higher = more access)
+const ROLES = ['dealer', 'se', 'asm', 'rsm', 'nsm', 'admin'];
+
 const userSchema = new mongoose.Schema({
   name:         { type: String, required: true, trim: true },
   email:        { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:     { type: String, required: true, minlength: 8 },
-  role:         { type: String, enum: ['admin', 'staff'], default: 'staff' },
+  role:         { type: String, enum: ROLES, default: 'se' },
   phone:        { type: String, trim: true },
   companyName:  { type: String, trim: true },
   employeeId:   { type: String, trim: true },
+  // RSM & above: province scoping
   province:     { type: String, enum: [...PROVINCES, null, ''], default: null },
+  // ASM & SE: area scoping
+  area:         { type: String, trim: true, default: null },
   district:     { type: String, trim: true },
-  assignedArea: { type: String, trim: true },
-  designation:  { type: String, enum: ['Marketing Staff', 'Sales Executive', 'Supervisor'], default: 'Marketing Staff' },
   isActive:     { type: Boolean, default: true },
   createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
@@ -39,3 +43,4 @@ userSchema.methods.matchPassword = async function (entered) {
 
 module.exports = mongoose.model('User', userSchema);
 module.exports.PROVINCES = PROVINCES;
+module.exports.ROLES = ROLES;

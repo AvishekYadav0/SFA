@@ -43,7 +43,18 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{
+      user, loading, login, register, logout, updateUser,
+      // Role helpers — use these everywhere instead of user.role === '...'
+      isAdmin:  user?.role === 'admin',
+      isNSM:    user?.role === 'nsm',
+      isRSM:    user?.role === 'rsm',
+      isASM:    user?.role === 'asm',
+      isSE:     user?.role === 'se',
+      isDealer: user?.role === 'dealer',
+      // True for any role that can manage data (not dealer-only view)
+      canManage: ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role),
+    }}>
       {children}
     </AuthContext.Provider>
   );

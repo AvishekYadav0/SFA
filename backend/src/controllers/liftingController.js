@@ -1,17 +1,14 @@
 const Lifting = require('../models/Lifting');
+const { scopeFilter } = require('../middleware/auth');
 
 exports.getAll = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const filter = {};
-  if (req.query.order) filter.order = req.query.order;
-  if (req.query.dealer) filter.dealer = req.query.dealer;
-  if (req.query.province) filter.province = req.query.province;
-  // Staff: restrict to own province and own records
-  if (req.user.role === 'staff') {
-    filter.province = req.user.province;
-    filter.staffId = req.user._id;
-  }
+  const filter = { ...scopeFilter(req) };
+  if (req.query.order)    filter.order   = req.query.order;
+  if (req.query.dealer)   filter.dealer  = req.query.dealer;
+  if (req.query.province && ['admin', 'nsm'].includes(req.user.role))
+    filter.province = req.query.province;
   const total = await Lifting.countDocuments(filter);
   const data = await Lifting.find(filter)
     .populate('order', 'orderNumber')
@@ -26,14 +23,14 @@ exports.getOne = async (req, res) => {
   const data = await Lifting.findById(req.params.id)
     .populate('order').populate('dealer').populate('product').populate('staffId', 'name province');
   if (!data) return res.status(404).json({ success: false, message: 'Not found' });
-  if (req.user.role === 'staff' && data.province !== req.user.province)
+  if (!['admin', 'nsm'].includes(req.user.role) && data.staffId?.toString() !== req.user._id.toString())
     return res.status(403).json({ success: false, message: 'Access denied' });
   res.json({ success: true, data });
 };
 
 exports.create = async (req, res) => {
   try {
-    const province = req.user.role === 'staff' ? req.user.province : req.body.province;
+    const province = ['admin', 'nsm'].includes(req.user.role) ? req.body.province : req.user.province;
     if (!province) return res.status(400).json({ success: false, message: 'Province is required' });
     const total = (req.body.week1 || 0) + (req.body.week2 || 0) + (req.body.week3 || 0) + (req.body.week4 || 0);
     if (total > req.body.orderedQuantity)
@@ -54,7 +51,7 @@ exports.update = async (req, res) => {
   try {
     const lifting = await Lifting.findById(req.params.id);
     if (!lifting) return res.status(404).json({ success: false, message: 'Not found' });
-    if (req.user.role === 'staff') {
+    if (!['admin', 'nsm'].includes(req.user.role)) {
       if (lifting.staffId?.toString() !== req.user._id.toString())
         return res.status(403).json({ success: false, message: 'Access denied' });
       delete req.body.province;

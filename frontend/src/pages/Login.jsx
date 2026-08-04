@@ -5,14 +5,14 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../services';
 import toast from 'react-hot-toast';
 import {
-  FiTrendingUp, FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiUsers
+  FiTrendingUp, FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiUsers, FiUser
 } from 'react-icons/fi';
 import { Spinner } from '../components/common/Spinner';
 
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const [role, setRole] = useState('admin');
+  const [role, setRole] = useState('se');
   const [showPass, setShowPass] = useState(false);
   const [adminExists, setAdminExists] = useState(true);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
@@ -56,13 +56,17 @@ export default function Login() {
           {/* Role Selector */}
           <div className="mb-6">
             <p className="text-sm font-medium text-blue-100 mb-3">I am signing in as</p>
-            <div className="flex gap-3">
+            <div className="grid grid-cols-3 gap-2">
               {[
                 { value: 'admin', label: 'Admin', icon: FiShield },
-                { value: 'staff', label: 'Staff Member', icon: FiUsers },
+                { value: 'nsm', label: 'NSM', icon: FiShield },
+                { value: 'rsm', label: 'RSM', icon: FiUsers },
+                { value: 'asm', label: 'ASM', icon: FiUsers },
+                { value: 'se', label: 'SE', icon: FiUser },
+                { value: 'dealer', label: 'Dealer', icon: FiUser },
               ].map(({ value, label, icon: Icon }) => (
                 <label key={value}
-                  className={`flex-1 flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                  className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${
                     role === value
                       ? 'border-white bg-white/20 text-white'
                       : 'border-white/20 text-blue-200 hover:border-white/40'
@@ -70,12 +74,12 @@ export default function Login() {
                   <input type="radio" name="role" value={value}
                     checked={role === value} onChange={() => setRole(value)}
                     className="sr-only" />
-                  <Icon className="text-base flex-shrink-0" />
-                  <span className="font-medium text-sm">{label}</span>
-                  <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  <Icon className="text-sm flex-shrink-0" />
+                  <span className="font-medium text-xs">{label}</span>
+                  <div className={`ml-auto w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                     role === value ? 'border-white' : 'border-white/40'
                   }`}>
-                    {role === value && <div className="w-2 h-2 rounded-full bg-white" />}
+                    {role === value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                   </div>
                 </label>
               ))}
@@ -144,12 +148,12 @@ export default function Login() {
               className="btn-primary w-full justify-center py-3 mt-1 text-base">
               {isSubmitting
                 ? <><Spinner size="sm" /><span className="ml-2">Signing in...</span></>
-                : `Sign In as ${role === 'admin' ? 'Admin' : 'Staff'}`}
+                : `Sign In as ${role.toUpperCase()}`}
             </button>
           </form>
 
           {/* Staff note */}
-          {role === 'staff' && (
+          {['se', 'dealer'].includes(role) && (
             <p className="text-center text-blue-300 text-xs mt-4">
               Don't have an account? Ask your Admin to create one for you.
             </p>
