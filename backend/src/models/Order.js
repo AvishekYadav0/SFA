@@ -67,8 +67,17 @@ orderSchema.index({ dealer: 1 });
 
 orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `ORD-${String(count + 1).padStart(6, '0')}`;
+    let unique = false;
+    while (!unique) {
+      const last = await mongoose.model('Order').findOne({}, { orderNumber: 1 }).sort({ orderNumber: -1 });
+      const lastNum = last?.orderNumber ? parseInt(last.orderNumber.replace('ORD-', '')) : 0;
+      const candidate = `ORD-${String(lastNum + 1).padStart(6, '0')}`;
+      const exists = await mongoose.model('Order').findOne({ orderNumber: candidate });
+      if (!exists) {
+        this.orderNumber = candidate;
+        unique = true;
+      }
+    }
   }
   next();
 });
