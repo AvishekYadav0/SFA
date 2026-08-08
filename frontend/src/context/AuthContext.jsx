@@ -47,10 +47,15 @@ export const AuthProvider = ({ children }) => {
       user, loading, login, register, logout, updateUser,
       // Role helpers
       isAdmin:  user?.role === 'admin',
-      isStaff:  user?.role === 'staff',
-      canManage: ['admin', 'staff'].includes(user?.role),
-      canViewReports: ['admin', 'staff'].includes(user?.role),
-      canManageUsers: user?.role === 'admin',
+      isNSM:    user?.role === 'nsm',
+      isRSM:    user?.role === 'rsm',
+      isASM:    user?.role === 'asm',
+      isSE:     user?.role === 'se',
+      isSO:     user?.role === 'so',
+      isDealer: user?.role === 'dealer',
+      canManage: ['admin', 'nsm', 'rsm', 'asm', 'se', 'so'].includes(user?.role),
+      canViewReports: ['admin', 'nsm', 'rsm', 'asm', 'se'].includes(user?.role),
+      canManageUsers: ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role),
     }}>
       {children}
     </AuthContext.Provider>

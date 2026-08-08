@@ -65,19 +65,19 @@ const AppRoutes = () => {
         {/* Protected */}
         <Route element={<PrivateRoute><AppLayout /></PrivateRoute>}>
           <Route path="/dashboard"    element={<Dashboard />} />
-          <Route path="/users"        element={<RoleRoute roles={['admin']}><Users /></RoleRoute>} />
+          <Route path="/users"        element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Users /></RoleRoute>} />
           <Route path="/dealers"      element={<Dealers />} />
-          <Route path="/products"     element={<RoleRoute roles={['admin']}><Products /></RoleRoute>} />
+          <Route path="/products"     element={<RoleRoute roles={['nsm','asm','admin']}><Products /></RoleRoute>} />
           <Route path="/orders"       element={<Orders />} />
-          <Route path="/pipeline"     element={<RoleRoute roles={['admin']}><Pipeline /></RoleRoute>} />
+          <Route path="/pipeline"     element={<RoleRoute roles={['nsm','rsm','asm','admin']}><Pipeline /></RoleRoute>} />
           <Route path="/sales"        element={<Sales />} />
           <Route path="/collections"  element={<Collections />} />
           <Route path="/visits"       element={<Visits />} />
-          <Route path="/reports"      element={<RoleRoute roles={['admin', 'staff']}><Reports /></RoleRoute>} />
-          <Route path="/dealer-portal" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/reports"      element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Reports /></RoleRoute>} />
+          <Route path="/dealer-portal" element={<RoleRoute roles={['dealer']}><DealerPortal /></RoleRoute>} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/profile"      element={<Profile />} />
-          <Route path="/settings"     element={<RoleRoute roles={['admin']}><Settings /></RoleRoute>} />
+          <Route path="/settings"     element={<RoleRoute roles={['nsm','admin']}><Settings /></RoleRoute>} />
           <Route path="/lifting"      element={<Lifting />} />
           <Route path="/daily-visits" element={<DailyVisits />} />
           <Route path="/claims"       element={<Claims />} />
