@@ -1,11 +1,14 @@
-const router = require('express').Router();
+const express = require('express');
+const r = express.Router();
 const c = require('../controllers/dealerController');
 const { protect, authorize } = require('../middleware/auth');
-
-router.use(protect);
-router.get('/my-profile', c.getMyProfile);
-router.route('/').get(c.getAll).post(authorize('admin', 'se', 'asm', 'rsm', 'nsm'), c.create);
-router.route('/:id').get(c.getOne).put(authorize('admin', 'se', 'asm', 'rsm', 'nsm'), c.update).delete(authorize('admin'), c.remove);
-router.post('/:id/link-user', authorize('admin'), c.linkUser);
-
-module.exports = router;
+const managers = ['admin', 'nsm', 'rsm', 'asm', 'se', 'so'];
+r.use(protect);
+r.get('/',     c.getAll);
+r.get('/:id',  c.getOne);
+r.post('/',    authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.create);
+r.put('/:id',  authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.update);
+r.delete('/:id', authorize('admin', 'nsm'), c.remove);
+r.put('/:id/assign-so', authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.assignSO);
+r.put('/:id/link-user', authorize('admin', 'nsm'), c.linkUser);
+module.exports = r;

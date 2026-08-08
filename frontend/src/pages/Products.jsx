@@ -12,22 +12,31 @@ import { PageLoader } from '../components/common/Spinner';
 import { FiPlus, FiEdit2, FiTrash2, FiPackage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-const CATEGORIES = ['Beverages', 'Snacks', 'Dairy', 'Personal Care', 'Household', 'Other'];
-const UNITS = ['Piece', 'Box', 'Carton', 'Kg', 'Liter', 'Pack'];
+const DEFAULT_VALUES = {
+  productName: '',
+  ml: '',
+  up: '',
+  amount: 0,
+  customerType: 'MM',
+  customerPrice: 0,
+  exciseAmount: 0,
+  vatAmount: 0,
+  status: 'Active',
+};
 
 export default function Products() {
   const crud = useCrud(productService);
-  const [modal, setModal] = useState({ open: false, data: null });
+  const [modal, setModal]     = useState({ open: false, data: null });
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [deleting, setDeleting] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage]   = useState(1);
   const [search, setSearch] = useState('');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => { crud.fetchAll({ page, search, limit: 10 }); }, [page, search]);
 
-  const openCreate = () => { reset({}); setModal({ open: true, data: null }); };
-  const openEdit = (item) => { reset(item); setModal({ open: true, data: item }); };
+  const openCreate = () => { reset(DEFAULT_VALUES); setModal({ open: true, data: null }); };
+  const openEdit   = (item) => { reset(item); setModal({ open: true, data: item }); };
 
   const onSubmit = async (data) => {
     try {
@@ -60,24 +69,37 @@ export default function Products() {
 
       <div className="card p-0">
         {crud.loading ? <PageLoader /> : crud.data.length === 0 ? (
-          <EmptyState icon={FiPackage} title="No products found" description="Add your first product" action={<button className="btn-primary" onClick={openCreate}><FiPlus />Add Product</button>} />
+          <EmptyState icon={FiPackage} title="No products found" description="Add your first product"
+            action={<button className="btn-primary" onClick={openCreate}><FiPlus />Add Product</button>} />
         ) : (
           <>
             <div className="table-wrapper">
               <table className="table">
-                <thead><tr><th>Product Name</th><th>Brand</th><th>Category</th><th>SKU</th><th>Unit</th><th>Rate</th><th>Excise%</th><th>VAT%</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Product Name</th>
+                    <th>ML</th>
+                    <th>UP</th>
+                    <th>Amount</th>
+                    <th>Customer Type</th>
+                    <th>Customer Price</th>
+                    <th>Excise</th>
+                    <th>VAT</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {crud.data.map(p => (
                     <tr key={p._id}>
                       <td className="font-medium">{p.productName}</td>
-                      <td>{p.brand}</td>
-                      <td>{p.category}</td>
-                      <td className="text-xs text-slate-500">{p.sku}</td>
-                      <td>{p.unit}</td>
-                      <td className="font-medium">{formatCurrency(p.rate)}</td>
-                      <td>{p.excisePercent}%</td>
-                      <td>{p.vatPercent}%</td>
-                      <td>{p.stock}</td>
+                      <td>{p.ml || '—'}</td>
+                      <td>{p.up || '—'}</td>
+                      <td className="font-medium">{formatCurrency(p.amount)}</td>
+                      <td>{p.customerType || '—'}</td>
+                      <td>{formatCurrency(p.customerPrice)}</td>
+                      <td>{formatCurrency(p.exciseAmount)}</td>
+                      <td>{formatCurrency(p.vatAmount)}</td>
                       <td><StatusBadge status={p.status} /></td>
                       <td>
                         <div className="flex gap-2">
@@ -95,65 +117,71 @@ export default function Products() {
         )}
       </div>
 
-      <Modal open={modal.open} onClose={() => setModal({ open: false, data: null })} title={modal.data ? 'Edit Product' : 'Add Product'} size="lg">
-        <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Product Name</label>
-            <input {...register('productName', { required: 'Required' })} className="input"  placeholder='Enter Product Name' />
-            {errors.productName && <p className="text-danger text-xs mt-1">{errors.productName.message}</p>}
+      <Modal open={modal.open} onClose={() => setModal({ open: false, data: null })}
+        title={modal.data ? 'Edit Product' : 'Add Product'} size="lg">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+          {/* Basic Info */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-3">
+              <label className="label">Product Name *</label>
+              <input {...register('productName', { required: 'Product Name is required' })} className="input" placeholder="Enter Product Name" />
+              {errors.productName && <p className="text-danger text-xs mt-1">{errors.productName.message}</p>}
+            </div>
+            <div>
+              <label className="label">ML</label>
+              <input {...register('ml')} className="input" placeholder="Example: 760 ML" />
+            </div>
+            <div>
+              <label className="label">UP</label>
+              <input {...register('up')} className="input" placeholder="Enter UP value" />
+            </div>
+            <div>
+              <label className="label">Amount (NPR) *</label>
+              <input {...register('amount', { required: 'Amount is required', valueAsNumber: true })} type="number" step="0.01" className="input" />
+              {errors.amount && <p className="text-danger text-xs mt-1">{errors.amount.message}</p>}
+            </div>
           </div>
-          <div>
-            <label className="label">Brand</label>
-            <input {...register('brand', { required: 'Required' })} className="input" placeholder='eg : Iphone ' />
-            {errors.brand && <p className="text-danger text-xs mt-1">{errors.brand.message}</p>}
+
+          {/* Customer Type */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Customer Type</label>
+              <select {...register('customerType')} className="input">
+                <option value="MM">MM</option>
+                <option value="ADPL">ADPL</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Customer Price (NPR)</label>
+              <input {...register('customerPrice', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
+            </div>
           </div>
-          <div>
-            <label className="label">Category</label>
-            <select {...register('category', { required: 'Required' })} className="input">
-              <option value="">Select...</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            {errors.category && <p className="text-danger text-xs mt-1">{errors.category.message}</p>}
+
+          {/* Tax & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="label">Excise Amount (NPR)</label>
+              <input {...register('exciseAmount', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
+            </div>
+            <div>
+              <label className="label">VAT Amount (NPR)</label>
+              <input {...register('vatAmount', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
+            </div>
+            <div>
+              <label className="label">Status</label>
+              <select {...register('status')} className="input">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="label">SKU</label>
-            <input {...register('sku', { required: 'Required' })} className="input" placeholder='eg : MAS-1001' />
-            {errors.sku && <p className="text-danger text-xs mt-1">{errors.sku.message}</p>}
-          </div>
-          <div>
-            <label className="label">Unit</label>
-            <select {...register('unit', { required: 'Required' })} className="input">
-              <option value="">Select...</option>
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Rate (NPR)</label>
-            <input {...register('rate', { required: 'Required', valueAsNumber: true, min: 0 })} type="number" step="0.01" className="input" />
-            {errors.rate && <p className="text-danger text-xs mt-1">{errors.rate.message}</p>}
-          </div>
-          <div>
-            <label className="label">Excise %</label>
-            <input {...register('excisePercent', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
-          </div>
-          <div>
-            <label className="label">VAT %</label>
-            <input {...register('vatPercent', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={13} />
-          </div>
-          <div>
-            <label className="label">Stock</label>
-            <input {...register('stock', { valueAsNumber: true })} type="number" className="input" defaultValue={0} />
-          </div>
-          <div>
-            <label className="label">Status</label>
-            <select {...register('status')} className="input">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
+
+          <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-secondary" onClick={() => setModal({ open: false, data: null })}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : modal.data ? 'Update' : 'Create'}</button>
+            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : modal.data ? 'Update' : 'Create'}
+            </button>
           </div>
         </form>
       </Modal>

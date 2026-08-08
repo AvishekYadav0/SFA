@@ -1,219 +1,188 @@
-const Order = require('../models/Order');
-const Sale  = require('../models/Sale');
-const { scopeFilter } = require('../middleware/auth');
+const Order  = require('../models/Order');
+const Dealer = require('../models/Dealer');
+const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 
-const buildItemTotals = (items = []) => items.map(item => {
-  const basic  = (item.quantity || 0) * (item.rate || 0);
-  const excise = basic * ((item.excisePercent || 0) / 100);
-  const vat    = (basic + excise) * ((item.vatPercent || 0) / 100);
+const calcItems = (items = []) => items.map(item => {
+  const qty    = item.quantity || 0;
+  const basic  = qty * (item.rate || 0);
+  const excise = (item.exciseAmount || 0) * qty;
+  const vat    = (item.vatAmount    || 0) * qty;
   return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
 });
 
-const buildOrderTotals = (items = []) => {
-  const normalizedItems = buildItemTotals(items);
-  return normalizedItems.reduce((acc, item) => ({
-    totalBasicAmount:  acc.totalBasicAmount  + (item.basicAmount || 0),
-    totalExciseAmount: acc.totalExciseAmount + (item.exciseAmount || 0),
-    totalVatAmount:    acc.totalVatAmount    + (item.vatAmount || 0),
-    grandTotal:        acc.grandTotal        + (item.grandTotal || 0),
-  }), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
-};
+const calcTotals = (items) => items.reduce((a, i) => ({
+  totalBasicAmount:  a.totalBasicAmount  + (i.basicAmount  || 0),
+  totalExciseAmount: a.totalExciseAmount + (i.exciseAmount || 0),
+  totalVatAmount:    a.totalVatAmount    + (i.vatAmount    || 0),
+  grandTotal:        a.grandTotal        + (i.grandTotal   || 0),
+}), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
 
 exports.getAll = async (req, res) => {
   try {
-    const page  = parseInt(req.query.page)  || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page   = parseInt(req.query.page)  || 1;
+    const limit  = parseInt(req.query.limit) || 20;
     const filter = { ...scopeFilter(req) };
-
-    if (req.query.status)      filter.status      = req.query.status;
-    if (req.query.salesperson) filter.salesperson = req.query.salesperson;
-    if (req.query.dealer)      filter.dealer      = req.query.dealer;
-    // Province/area override only for admin/nsm (lower roles are already locked by scopeFilter)
-    if (req.query.province && ['admin', 'nsm'].includes(req.user.role))
-      filter.province = req.query.province;
+    if (req.query.status)   filter.status   = req.query.status;
+    if (req.query.dealer)   filter.dealer   = req.query.dealer;
+    if (req.query.se)       filter.se       = req.query.se;
+    if (req.query.so)       filter.so       = req.query.so;
+    if (req.query.asm)      filter.asm      = req.query.asm;
+    if (req.query.province) filter.province = req.query.province;
     if (req.query.startDate && req.query.endDate)
       filter.date = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
 
     const total = await Order.countDocuments(filter);
     const data  = await Order.find(filter)
-      .populate('salesperson', 'fullName employeeId')
-      .populate('dealer', 'dealerName province')
-      .populate('items.product', 'productName')
-      .populate('staffId', 'name province')
-      .sort('-createdAt')
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .populate('se',  'name employeeId')
+      .populate('so',  'name employeeId')
+      .populate('asm', 'name')
+      .populate('rsm', 'name')
+      .populate('nsm', 'name')
+      .populate('dealer', 'dealerName area province')
+      .sort('-createdAt').skip((page - 1) * limit).limit(limit);
 
     res.json({ success: true, data, total, page, pages: Math.ceil(total / limit) });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.getOne = async (req, res) => {
   try {
-    const data = await Order.findById(req.params.id)
-      .populate('salesperson').populate('dealer').populate('items.product').populate('staffId', 'name province');
+    const { scopeFilter } = require('../middleware/auth');
+    const scope = scopeFilter(req);
+    const data = await Order.findOne({ _id: req.params.id, ...scope })
+      .populate('se so asm rsm nsm', 'name phone')
+      .populate('dealer', 'dealerName phone address')
+      .populate('items.product', 'productName ml up');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
-
-    // Non-admin/nsm can only view records in their scope
-    if (!['admin', 'nsm'].includes(req.user.role)) {
-      const scope = scopeFilter(req);
-      const allowed = Object.entries(scope).every(([k, v]) => String(data[k]) === String(v));
-      if (!allowed)
-        return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-
     res.json({ success: true, data });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.create = async (req, res) => {
   try {
-    const items = buildItemTotals(req.body.items || []);
-    const totals = buildOrderTotals(items);
+    const User   = require('../models/User');
+    const dealer = await Dealer.findById(req.body.dealer);
+    const items  = calcItems(req.body.items || []);
+    const totals = calcTotals(items);
 
-    // Auto-assign province from staff; admin must provide it
-    const province = ['admin', 'nsm'].includes(req.user.role) ? req.body.province : req.user.province;
-    if (!province) return res.status(400).json({ success: false, message: 'Province is required' });
+    // Use the dealer-selected User as the order owner when an admin creates it.
+    let creator = req.user;
+    const selectedSalesperson = req.body.salesperson || req.body.se || req.body.so;
+    if (['admin', 'nsm', 'rsm', 'asm'].includes(req.user.role) && selectedSalesperson) {
+      creator = await User.findById(selectedSalesperson);
+    }
+    let hierarchy = await hierarchyFields(creator);
+    if (creator && ['nsm', 'rsm', 'asm'].includes(creator.role)) {
+      hierarchy = {
+        se:  null,
+        so:  null,
+        asm: creator.role === 'asm' ? creator._id : (creator.asm || null),
+        rsm: creator.role === 'rsm' ? creator._id : (creator.rsm || null),
+        nsm: creator.role === 'nsm' ? creator._id : (creator.nsm || null),
+      };
+    }
 
     const data = await Order.create({
-      ...req.body, items, ...totals,
-      province,
-      staffId:   req.user._id,
+      ...req.body,
+      items,
+      ...totals,
+      ...hierarchy,
+      province: dealer?.province || req.body.province,
+      district: dealer?.district || req.body.district,
+      area:     dealer?.area     || req.body.area,
+      region:   dealer?.region   || req.body.region,
       createdBy: req.user._id,
     });
 
-    // Re-fetch to get orderNumber set by pre-save hook
-    const saved = await Order.findById(data._id);
-
-    // Auto-create linked Sale record
-    await Sale.create({
-      order:          saved._id,
-      orderNumber:    saved.orderNumber,
-      salesperson:    saved.salesperson,
-      dealer:         saved.dealer,
-      province:       saved.province,
-      area:           saved.area,
-      grandTotal:     saved.grandTotal,
-      collectedAmount: saved.collectedAmount || 0,
-      paymentType:    saved.paymentMethod || 'cash',
-      status:         'pending',
-      staffId:        req.user._id,
-      createdBy:      req.user._id,
-    });
-
+    await Dealer.findByIdAndUpdate(req.body.dealer, { lastOrderDate: new Date() });
+    const saved = await Order.findById(data._id)
+      .populate('se so asm rsm nsm dealer', 'name dealerName area');
     res.status(201).json({ success: true, data: saved });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
 exports.update = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Not found' });
-
-    if (req.user.role !== 'admin' && req.user.role !== 'nsm') {
-      if (order.staffId?.toString() !== req.user._id.toString())
-        return res.status(403).json({ success: false, message: 'Access denied' });
-      if (order.status !== 'pending')
-        return res.status(403).json({ success: false, message: 'Can only edit pending orders' });
-      delete req.body.province;
-    }
-
     if (req.body.items) {
-      req.body.items = buildItemTotals(req.body.items);
-      Object.assign(req.body, buildOrderTotals(req.body.items));
+      req.body.items = calcItems(req.body.items);
+      Object.assign(req.body, calcTotals(req.body.items));
     }
-
     const data = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+exports.updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const update = { status };
+    if (req.body.collectedAmount !== undefined) update.collectedAmount = Number(req.body.collectedAmount) || 0;
+    if (req.body.paymentMethod) update.paymentType = req.body.paymentMethod;
+    const now = new Date();
+    if (status === 'approved')        { update.approvedAt = now; update.approvedBy = req.user._id; }
+    if (status === 'warehouse')         update.warehouseAt    = now;
+    if (status === 'out_for_delivery')  update.dispatchedAt   = now;
+    if (status === 'delivered')         update.deliveredAt    = now;
+    if (status === 'completed')         update.completedAt    = now;
+    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    if (status === 'completed') {
+      const Sale = require('../models/Sale');
+      const existingSale = await Sale.findOne({ order: data._id }).select('_id');
+      if (!existingSale) {
+        const assignedUser = data.so || data.se || data.asm || data.rsm || data.nsm;
+        await Sale.create({
+          order: data._id,
+          orderNumber: data.orderNumber,
+          dealer: data.dealer,
+          salesperson: assignedUser,
+          province: data.province,
+          area: data.area,
+          date: data.date,
+          items: data.items,
+          grandTotal: data.grandTotal,
+          collectedAmount: data.collectedAmount || 0,
+          paymentType: data.paymentType || 'cash',
+          status: 'completed',
+          staffId: req.user._id,
+          createdBy: req.user._id,
+        });
+      }
+    }
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+exports.reviewOrder = async (req, res) => {
+  try {
+    const { action, remarks, items } = req.body;
+    const update = {};
+    if (remarks) update.approvalRemarks = remarks;
+    if (action === 'approve') {
+      update.status = 'approved';
+      update.approvedAt = new Date();
+      update.approvedBy = req.user._id;
+    } else if (action === 'reject') {
+      update.status = 'rejected';
+    } else if (action === 'hold') {
+      update.status = 'hold';
+    } else if (action === 'save' && items) {
+      const recalcItems = calcItems(items);
+      update.items = recalcItems;
+      Object.assign(update, calcTotals(recalcItems));
+    }
+    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true })
+      .populate('se so asm rsm nsm dealer', 'name dealerName area');
+    if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.remove = async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Deleted' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-exports.review = async (req, res) => {
-  try {
-    const { action, remarks, items } = req.body;
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Not found' });
-
-    const update = {};
-
-    if (Array.isArray(items)) {
-      const normalizedItems = buildItemTotals(items);
-      Object.assign(update, { items: normalizedItems, ...buildOrderTotals(normalizedItems) });
-    }
-
-    if (typeof remarks === 'string') update.approvalRemarks = remarks;
-
-    if (action === 'approve') {
-      update.status = 'approved';
-      update.approvedAt = new Date();
-      update.approvedBy = req.user._id;
-      update.reviewAction = 'approved';
-    } else if (action === 'reject') {
-      update.status = 'rejected';
-      update.reviewAction = 'rejected';
-    } else if (action === 'hold') {
-      update.status = 'hold';
-      update.reviewAction = 'hold';
-    } else {
-      update.reviewAction = 'saved';
-    }
-
-    const historyEntry = {
-      action: action || 'saved',
-      remarks: remarks || '',
-      performedBy: req.user._id,
-      performedAt: new Date(),
-    };
-
-    update.reviewHistory = [...(order.reviewHistory || []), historyEntry];
-
-    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true });
-    await Sale.findOneAndUpdate({ order: req.params.id }, { status: data.status });
-    res.json({ success: true, data });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-exports.updateStatus = async (req, res) => {
-  try {
-    const { status, collectedAmount, paymentMethod } = req.body;
-    const update = { status };
-
-    if (status === 'approved')          { update.approvedAt = new Date(); update.approvedBy = req.user._id; }
-    if (status === 'warehouse')         { update.warehouseAt = new Date(); }
-    if (status === 'out_for_delivery')  { update.dispatchedAt = new Date(); }
-    if (status === 'delivered')         { update.deliveredAt = new Date(); }
-    if (status === 'completed') {
-      update.paidAt = new Date();
-      if (collectedAmount !== undefined) update.collectedAmount = collectedAmount;
-      if (paymentMethod)                update.paymentMethod = paymentMethod;
-    }
-
-    const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true });
-
-    // Keep Sale status in sync with Order status
-    await Sale.findOneAndUpdate({ order: req.params.id }, { status });
-
-    res.json({ success: true, data });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };

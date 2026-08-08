@@ -51,9 +51,14 @@ export const AuthProvider = ({ children }) => {
       isRSM:    user?.role === 'rsm',
       isASM:    user?.role === 'asm',
       isSE:     user?.role === 'se',
+      isSO:     user?.role === 'so',
       isDealer: user?.role === 'dealer',
       // True for any role that can manage data (not dealer-only view)
-      canManage: ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role),
+      canManage: ['admin', 'nsm', 'rsm', 'asm', 'se', 'so'].includes(user?.role),
+      // True for roles that can see reports/analytics
+      canViewReports: ['admin', 'nsm', 'rsm', 'asm', 'se'].includes(user?.role),
+      // True for roles that can manage other users
+      canManageUsers: ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role),
     }}>
       {children}
     </AuthContext.Provider>

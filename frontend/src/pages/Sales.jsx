@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
-import { saleService, dealerService, salespersonService, productService } from '../services';
+import { saleService, dealerService, userService, productService } from '../services';
 import { formatCurrency, formatDate } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import { Pagination } from '../components/common/Pagination';
@@ -11,6 +11,7 @@ import {
   FiMapPin, FiUsers, FiShoppingCart, FiDollarSign,
   FiTrendingUp, FiRefreshCw, FiDownload, FiArrowLeft,
   FiAlertCircle, FiCheckCircle, FiBarChart2, FiPackage, FiEdit3,
+  FiPlus, FiMinus,
 } from 'react-icons/fi';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -65,6 +66,145 @@ const SALE_STATUS_OPTIONS = [
   { value: 'completed', label: 'Completed' },
   { value: 'hold', label: 'Hold' },
 ];
+
+const EMPTY_PROVINCES = [
+  'Koshi Province', 'Madhesh Province', 'Bagmati Province', 'Gandaki Province',
+  'Lumbini Province', 'Karnali Province', 'Sudurpashchim Province',
+].map(name => ({ province: name, totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, dealerCount: 0, activeStaffCount: 0, collectionRate: 0, paymentBreakdown: {} }));
+
+const DEFAULT_OVERALL = { totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, paymentBreakdown: {} };
+
+const getDealerAssignedSalesperson = (dealer) => {
+  if (!dealer) return { id: '', label: '', role: null };
+
+  const resolve = (value, role) => {
+    if (!value) return null;
+    const first = Array.isArray(value) ? value[0] : value;
+    const id = first?._id || first;
+    return {
+      id: id != null ? String(id) : '',
+      label: first?.fullName || first?.name || '',
+      role,
+    };
+  };
+
+  const directField = dealer.assignedRole;
+  if (directField) {
+    const direct = resolve(dealer[directField], directField.toUpperCase());
+    if (direct) return direct;
+  }
+
+  return resolve(dealer.so, 'SO')
+    || resolve(dealer.se, 'SE')
+    || resolve(dealer.asm, 'ASM')
+    || resolve(dealer.rsm, 'RSM')
+    || resolve(dealer.nsm, 'NSM')
+    || { id: '', label: '', role: null };
+};
+
+const getStaffName = (staff) => staff?.fullName || staff?.name || '';
+
+/* ── Sales Items Spreadsheet (mirrors Orders sheet) ─── */
+const CUSTOMER_TYPES = ['MM', 'ADPL'];
+
+const calcRow = (qty, rate, excAmt, vatAmt) => {
+  const q = +qty || 0;
+  const basic = q * (+rate || 0);
+  const excise = (+excAmt || 0) * q;
+  const vat = (+vatAmt || 0) * q;
+  return { basic, excise, vat, total: basic + excise + vat };
+};
+
+const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
+  const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+  const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+
+  const handleProductChange = (productId) => {
+    const p = products.find(x => x._id === productId);
+    if (p) {
+      onChange(index, {
+        ...item,
+        product: p._id,
+        productName: p.productName,
+        customerType: p.customerType || item.customerType || 'MM',
+        ml: p.ml || '',
+        up: p.up || '',
+        rate: p.customerType === (item.customerType || 'MM') ? (p.customerPrice || p.rate || 0) : 0,
+        exciseAmount: p.exciseAmount || 0,
+        vatAmount: p.vatAmount || 0,
+      });
+    } else {
+      onChange(index, { ...item, product: '', productName: '', ml: '', up: '', rate: 0, exciseAmount: 0, vatAmount: 0 });
+    }
+  };
+
+  const handleCustomerTypeChange = (ct) => {
+    onChange(index, { ...item, customerType: ct, product: '', productName: '', ml: '', up: '', rate: 0, exciseAmount: 0, vatAmount: 0 });
+  };
+
+  return (
+    <tr style={{ background: index % 2 === 0 ? '#fff' : '#f8fafc' }}>
+      <td className="px-2 py-1.5 text-center text-xs text-slate-400 font-medium">{index + 1}</td>
+      <td className="px-2 py-1.5">
+        <select value={item.product || ''} onChange={e => handleProductChange(e.target.value)}
+          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white">
+          <option value="">-- Select --</option>
+          {filteredProducts.map(p => <option key={p._id} value={p._id}>{p.productName}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-1.5">
+        <select value={item.customerType || 'MM'} onChange={e => handleCustomerTypeChange(e.target.value)}
+          className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white">
+          {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 text-center">{item.ml || '—'}</td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 text-center">{item.up || '—'}</td>
+      <td className="px-2 py-1.5">
+        <input type="number" min="0" value={item.quantity}
+          onChange={e => onChange(index, { ...item, quantity: e.target.value })}
+          className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 text-center" />
+      </td>
+      <td className="px-2 py-1.5">
+        <input type="number" step="0.01" min="0" value={item.rate} readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right text-xs font-medium text-slate-700">{c.basic.toFixed(2)}</td>
+      <td className="px-2 py-1.5">
+        <input type="number" step="0.01" min="0" value={item.exciseAmount} readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-orange-50 text-orange-600 text-right" />
+      </td>
+      <td className="px-2 py-1.5">
+        <input type="number" step="0.01" min="0" value={item.vatAmount} readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-blue-50 text-blue-600 text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{c.total.toFixed(2)}</td>
+      <td className="px-2 py-1.5 text-center">
+        <button type="button" onClick={() => onRemove(index)}
+          className="p-1 rounded text-red-400 hover:text-red-600 hover:bg-red-50">
+          <FiMinus size={14} />
+        </button>
+      </td>
+    </tr>
+  );
+};
+
+const SalesTotalsRow = ({ items }) => {
+  const t = items.reduce((a, i) => {
+    const c = calcRow(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
+    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
+  }, { basic: 0, excise: 0, vat: 0, total: 0 });
+  return (
+    <tr style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
+      <td colSpan={7} className="px-3 py-2 text-xs font-bold text-slate-600 text-right">TOTALS →</td>
+      <td className="px-2 py-2 text-right text-xs font-bold text-slate-800">{t.basic.toFixed(2)}</td>
+      <td className="px-2 py-2 text-right text-xs font-bold text-orange-600">{t.excise.toFixed(2)}</td>
+      <td className="px-2 py-2 text-right text-xs font-bold text-blue-600">{t.vat.toFixed(2)}</td>
+      <td className="px-2 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(t.total)}</td>
+      <td></td>
+    </tr>
+  );
+};
 
 /* ── Summary Stat Card ───────────────────────────────── */
 const StatCard = ({ icon: Icon, label, value, color, sub }) => (
@@ -142,7 +282,7 @@ const ProvinceStaffModal = ({ province, onClose }) => {
                     style={{ background: c.border, color: '#fff' }}>{i + 1}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-slate-800 text-sm truncate">{sp.fullName}</p>
+                      <p className="font-semibold text-slate-800 text-sm truncate">{getStaffName(sp)}</p>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         sp.status === 'inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'
                       }`}>{sp.status || 'active'}</span>
@@ -370,7 +510,7 @@ const OrdersTable = ({ province, range, from, to }) => {
       if (province) params.province = province;
       if (from) params.from = from;
       if (to) params.to = to;
-      const res = await api.get('/sales/orders', { params });
+      const res = await api.get('/orders', { params });
       setOrders(res.data.data || []);
       setPages(res.data.pages || 1);
       setTotal(res.data.total || 0);
@@ -405,14 +545,18 @@ const OrdersTable = ({ province, range, from, to }) => {
           </thead>
           <tbody>
             {orders.map((o, i) => {
-              const c = PAYMENT_COLORS[o.paymentMethod] || { bg: '#f8fafc', text: '#475569', label: o.paymentMethod };
+              const c = PAYMENT_COLORS[o.paymentType] || { bg: '#f8fafc', text: '#475569', label: o.paymentType };
               return (
                 <tr key={o._id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}
                   className="border-b border-slate-100">
                   <td className="px-3 py-2.5 font-bold text-primary-600 text-xs">{o.orderNumber}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500">{formatDate(o.paidAt || o.createdAt)}</td>
+                  <td className="px-3 py-2.5 text-xs text-slate-500">{formatDate(o.date || o.createdAt)}</td>
                   <td className="px-3 py-2.5 text-xs font-medium text-slate-700">{o.dealer?.dealerName}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">{o.salesperson?.fullName || o.staffId?.name || '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-slate-600">
+                    {(o.so || o.se || o.asm || o.rsm || o.nsm)
+                      ? `${(o.so || o.se || o.asm || o.rsm || o.nsm).name} (${(o.so && 'SO') || (o.se && 'SE') || (o.asm && 'ASM') || (o.rsm && 'RSM') || 'NSM'})`
+                      : (o.staffId?.name || '—')}
+                  </td>
                   <td className="px-3 py-2.5 text-xs">
                     {(() => {
                       const pc = PROVINCE_COLORS[o.province] || { bg: '#f8fafc', text: '#475569', border: '#94a3b8' };
@@ -430,7 +574,7 @@ const OrdersTable = ({ province, range, from, to }) => {
                   <td className="px-3 py-2.5 text-center">
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                       style={{ background: c.bg, color: c.text }}>
-                      {c.label || o.paymentMethod || '—'}
+                      {c.label || o.paymentType || '—'}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-right text-xs font-bold text-green-700">
@@ -461,28 +605,24 @@ export default function Sales() {
   const to    = searchParams.get('to') || '';
   const selectedProvince = searchParams.get('province') || null;
 
-  const DEFAULT_PROVINCES = [
-    'Koshi Province', 'Madhesh Province', 'Bagmati Province', 'Gandaki Province',
-    'Lumbini Province', 'Karnali Province', 'Sudurpashchim Province',
-  ].map(name => ({ province: name, totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, dealerCount: 0, activeStaffCount: 0, collectionRate: 0, paymentBreakdown: {} }));
-
-  const DEFAULT_OVERALL = { totalOrders: 0, totalSales: 0, collected: 0, outstanding: 0, paymentBreakdown: {} };
-
-  const [provinces, setProvinces] = useState(DEFAULT_PROVINCES);
+  const [provinces, setProvinces] = useState(EMPTY_PROVINCES);
   const [overall, setOverall] = useState(DEFAULT_OVERALL);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState(selectedProvince ? 'detail' : 'overview');
+  const view = selectedProvince ? 'detail' : 'overview';
   const [staffModal, setStaffModal] = useState(null); // province name or null
   const [salespersons, setSalespersons] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [assignedSalespersonId, setAssignedSalespersonId] = useState('');
+  const [assignedSalespersonLabel, setAssignedSalespersonLabel] = useState('');
+  const [assignedSalespersonRole, setAssignedSalespersonRole] = useState('');
   const [manualSale, setManualSale] = useState({
     date: new Date().toISOString().split('T')[0],
     salesperson: '',
     dealer: '',
     province: '',
     area: '',
-    items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+    items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
     grandTotal: '',
     collectedAmount: '',
     paymentType: 'cash',
@@ -490,6 +630,7 @@ export default function Sales() {
     remarks: '',
   });
   const [savingSale, setSavingSale] = useState(false);
+  const [dealerWarning, setDealerWarning] = useState('');
   const [entryMode, setEntryMode] = useState('choice');
   const [eligibleOrders, setEligibleOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -502,10 +643,10 @@ export default function Sales() {
       if (from) params.from = from;
       if (to) params.to = to;
       const res = await api.get('/sales/by-province', { params });
-      setProvinces(res.data.provinces?.length ? res.data.provinces : DEFAULT_PROVINCES);
+      setProvinces(res.data.provinces?.length ? res.data.provinces : EMPTY_PROVINCES);
       setOverall(res.data.overall || DEFAULT_OVERALL);
     } catch {
-      setProvinces(DEFAULT_PROVINCES);
+      setProvinces(EMPTY_PROVINCES);
       setOverall(DEFAULT_OVERALL);
     } finally { setLoading(false); }
   }, [range, from, to]);
@@ -513,15 +654,11 @@ export default function Sales() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   useEffect(() => {
-    salespersonService.getAll({ limit: 200 }).then(r => setSalespersons(r.data.data || [])).catch(() => setSalespersons([]));
+    userService.getAll({ limit: 200 }).then(r => setSalespersons((r.data.data || []).filter(s => ['nsm', 'rsm', 'asm', 'se', 'so'].includes(s.role)))).catch(() => setSalespersons([]));
     dealerService.getAll({ limit: 200 }).then(r => setDealers(r.data.data || [])).catch(() => setDealers([]));
     productService.getAll({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => setProducts([]));
   }, []);
 
-  // sync view with URL
-  useEffect(() => {
-    setView(searchParams.get('province') ? 'detail' : 'overview');
-  }, [searchParams]);
 
   const setParam = (key, val) => {
     const p = new URLSearchParams(searchParams);
@@ -530,6 +667,7 @@ export default function Sales() {
   };
 
   const openProvince = (province) => {
+    fetchStats();
     const p = new URLSearchParams(searchParams);
     p.set('province', province);
     setSearchParams(p);
@@ -563,12 +701,30 @@ export default function Sales() {
     a.click();
   };
 
-  const provinceData = selectedProvince
-    ? provinces.find(p => p.province === selectedProvince)
-    : null;
+/* ── DETAIL VIEW (single province) ──────────────────── */
+  if (view === 'detail') {
+    const c = PROVINCE_COLORS[selectedProvince] || {};
+    const pData = provinces.find(p => p.province === selectedProvince) || {
+      province: selectedProvince, totalOrders: 0, totalSales: 0,
+      collected: 0, outstanding: 0, paymentBreakdown: {},
+    };
 
-  /* ── DETAIL VIEW (single province) ──────────────────── */
-  if (view === 'detail') return (
+    if (loading) return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <button onClick={backToOverview} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600">
+            <FiArrowLeft size={12} /> All Provinces
+          </button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array(4).fill(0).map((_, i) => <div key={i} className="h-20 rounded-2xl bg-slate-100 animate-pulse" />)}
+        </div>
+        <div className="h-72 rounded-2xl bg-slate-100 animate-pulse" />
+        <div className="h-48 rounded-2xl bg-slate-100 animate-pulse" />
+      </div>
+    );
+
+    return (
     <div className="space-y-4">
       {/* header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -578,10 +734,7 @@ export default function Sales() {
             <FiArrowLeft size={12} /> All Provinces
           </button>
           <div className="flex items-center gap-2">
-            {selectedProvince && (() => {
-              const c = PROVINCE_COLORS[selectedProvince] || {};
-              return <FiMapPin style={{ color: c.border }} size={18} />;
-            })()}
+            {selectedProvince && <FiMapPin style={{ color: c.border }} size={18} />}
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedProvince}</h1>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">Completed sales — province detail</p>
@@ -590,12 +743,16 @@ export default function Sales() {
       </div>
 
       {/* province stats */}
-      {provinceData && (
+      {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={FiShoppingCart} label="Completed Orders" value={provinceData.totalOrders} color="#2563EB" />
-          <StatCard icon={FiTrendingUp}   label="Total Sales"      value={formatCurrency(provinceData.totalSales)} color="#8B5CF6" />
-          <StatCard icon={FiCheckCircle}  label="Collected"        value={formatCurrency(provinceData.collected)} color="#22C55E" />
-          <StatCard icon={FiAlertCircle}  label="Outstanding"      value={formatCurrency(provinceData.outstanding)} color="#EF4444" />
+          {Array(4).fill(0).map((_, i) => <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={FiShoppingCart} label="Total Orders" value={pData.totalOrders} color="#2563EB" />
+          <StatCard icon={FiTrendingUp}   label="Total Sales"  value={formatCurrency(pData.totalSales)} color="#8B5CF6" />
+          <StatCard icon={FiCheckCircle}  label="Collected"    value={formatCurrency(pData.collected)} color="#22C55E" />
+          <StatCard icon={FiAlertCircle}  label="Outstanding"  value={formatCurrency(pData.outstanding)} color="#EF4444" />
         </div>
       )}
 
@@ -603,23 +760,26 @@ export default function Sales() {
       <SalesTrendChart province={selectedProvince} range={range} from={from} to={to} />
 
       {/* payment breakdown */}
-      {provinceData && (
+      {!loading && (
         <div className="card p-4">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
             💳 Payment Methods
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-            {Object.entries(provinceData.paymentBreakdown || {}).filter(([, v]) => v?.amount > 0).map(([method, v]) => {
-              const c = PAYMENT_COLORS[method] || { bg: '#f8fafc', text: '#475569', label: method };
+            {Object.entries(pData.paymentBreakdown || {}).filter(([, v]) => v?.amount > 0).map(([method, v]) => {
+              const pc = PAYMENT_COLORS[method] || { bg: '#f8fafc', text: '#475569', label: method };
               return (
                 <div key={method} className="rounded-xl px-4 py-2.5 text-center min-w-[100px]"
-                  style={{ background: c.bg }}>
-                  <p className="text-[10px] font-semibold uppercase" style={{ color: c.text }}>{c.label}</p>
-                  <p className="text-sm font-bold mt-0.5" style={{ color: c.text }}>{formatCurrency(v.amount)}</p>
+                  style={{ background: pc.bg }}>
+                  <p className="text-[10px] font-semibold uppercase" style={{ color: pc.text }}>{pc.label}</p>
+                  <p className="text-sm font-bold mt-0.5" style={{ color: pc.text }}>{formatCurrency(v.amount)}</p>
                   <p className="text-[10px] text-slate-400">{v.count} orders</p>
                 </div>
               );
             })}
+            {!Object.values(pData.paymentBreakdown || {}).some(v => v?.amount > 0) && (
+              <p className="text-xs text-slate-400 col-span-full">No payment data yet.</p>
+            )}
           </div>
         </div>
       )}
@@ -627,52 +787,92 @@ export default function Sales() {
       {/* orders table */}
       <div className="card p-4">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-          Completed Orders — {selectedProvince}
+          Orders — {selectedProvince}
         </h3>
         <OrdersTable province={selectedProvince} range={range} from={from} to={to} />
       </div>
     </div>
   );
+  }
 
   /* ── OVERVIEW (all provinces) ────────────────────────── */
   const handleManualInput = (field, value) => {
+    if (field === 'salesperson' && user?.role !== 'admin') return;
     setManualSale(prev => ({ ...prev, [field]: value }));
   };
 
   const handleDealerChange = (dealerId) => {
     const dealer = dealers.find(d => d._id === dealerId);
     if (!dealer) {
-      setManualSale(prev => ({ ...prev, dealer: dealerId, province: '', area: '' }));
+      setManualSale(prev => ({ ...prev, dealer: dealerId, province: '', area: '', salesperson: '' }));
+      setDealerWarning('');
+      setAssignedSalespersonId('');
+      setAssignedSalespersonLabel('');
+      setAssignedSalespersonRole('');
       return;
     }
+    const assignment = getDealerAssignedSalesperson(dealer);
+    const baseLabel = assignment.label || salespersons.find(sp => String(sp._id) === String(assignment.id))?.fullName || salespersons.find(sp => String(sp._id) === String(assignment.id))?.name || '';
+    const label = baseLabel ? `${baseLabel}(${assignment.role})` : `Assigned ${assignment.role}`;
     setManualSale(prev => ({
       ...prev,
       dealer: dealer._id,
       province: dealer.province || '',
-      area: dealer.area || '',
+      area: dealer.address || dealer.area || '',
+      salesperson: assignment.id,
     }));
+    setDealerWarning(assignment.id ? '' : 'No assigned employee found for the selected dealer.');
+    setAssignedSalespersonId(String(assignment.id || ''));
+    setAssignedSalespersonLabel(label);
+    setAssignedSalespersonRole(assignment.role || '');
   };
 
-  const handleItemChange = (index, field, value) => {
+  useEffect(() => {
+    if (manualSale.dealer && dealers.length && salespersons.length) {
+      handleDealerChange(manualSale.dealer);
+    }
+  }, [manualSale.dealer, dealers, salespersons]);
+
+  const handleItemChange = (index, updatedItem) => {
     setManualSale(prev => {
-      const items = (prev.items || []).slice();
-      items[index] = { ...items[index], [field]: value };
+      const items = prev.items.slice();
+      items[index] = updatedItem;
       return { ...prev, items };
     });
   };
 
-  const handleOrderSelection = async (order) => {
+  const addItemRow = () => {
+    setManualSale(prev => ({
+      ...prev,
+      items: [...(prev.items || []), { product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+    }));
+  };
+
+  const removeItemRow = (idx) => {
+    setManualSale(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  };
+
+  const computeItemTotals = (it) => {
+    const c = calcRow(it.quantity, it.rate, it.exciseAmount, it.vatAmount);
+    return { basic: c.basic, exc: c.excise, vat: c.vat, total: c.total };
+  };
+
+  const computeGrandTotal = () =>
+    (manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).total, 0);
+
+  const handleOrderSelection = (order) => {
     setSelectedOrder(order);
     setEntryMode('from-order');
     const initialItems = (order.items || []).map(item => ({
       product: item.product?._id || item.product || '',
       productName: item.product?.productName || item.productName || '',
+      customerType: item.customerType || 'MM',
+      ml: item.ml || '',
+      up: item.up || '',
       quantity: item.quantity || 1,
       rate: item.rate || 0,
-      excisePercent: item.excisePercent || 0,
-      vatPercent: item.vatPercent || 0,
-      discountPercent: item.discountPercent || 0,
-      discountAmount: item.discountAmount || 0,
+      exciseAmount: item.exciseAmount || 0,
+      vatAmount: item.vatAmount || 0,
     }));
     setManualSale({
       order: order._id,
@@ -680,8 +880,8 @@ export default function Sales() {
       salesperson: order.salesperson?._id || order.salesperson || '',
       dealer: order.dealer?._id || order.dealer || '',
       province: order.province || '',
-      area: order.area || '',
-      items: initialItems.length ? initialItems : [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+      area: order.area || order.dealer?.address || order.dealer?.area || '',
+      items: initialItems.length ? initialItems : [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
       grandTotal: order.grandTotal || '',
       collectedAmount: order.collectedAmount || '',
       paymentType: order.paymentMethod || 'cash',
@@ -694,12 +894,14 @@ export default function Sales() {
     setSelectedOrder(null);
     setEntryMode('manual');
     setManualSale({
+      order: null,
+      orderNumber: '',
       date: new Date().toISOString().split('T')[0],
       salesperson: '',
       dealer: '',
       province: '',
       area: '',
-      items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+      items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
       grandTotal: '',
       collectedAmount: '',
       paymentType: 'cash',
@@ -723,49 +925,6 @@ export default function Sales() {
 
   useEffect(() => { loadEligibleOrders(); }, [loadEligibleOrders]);
 
-  const handleProductSelect = (index, productId) => {
-    const prod = products.find(p => p._id === productId);
-    setManualSale(prev => {
-      const items = (prev.items || []).slice();
-      if (!prod) {
-        items[index] = { ...items[index], product: productId, productName: '', rate: 0, excisePercent: 0, vatPercent: 0 };
-      } else {
-        const excisePercent = prod.rate ? ((Number(prod.excisePerUnit || 0) / prod.rate) * 100) : 0;
-        items[index] = {
-          ...items[index],
-          product: prod._id,
-          productName: prod.productName,
-          rate: prod.rate || 0,
-          excisePercent: Number(excisePercent.toFixed(2)),
-          vatPercent: Number(prod.vatPercent || 0),
-        };
-      }
-      return { ...prev, items };
-    });
-  };
-
-  const addItemRow = () => {
-    setManualSale(prev => ({ ...prev, items: [...(prev.items||[]), { product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }] }));
-  };
-
-  const removeItemRow = (idx) => {
-    setManualSale(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
-  };
-
-  const computeItemTotals = (it) => {
-    const qty = Number(it.quantity) || 0;
-    const rate = Number(it.rate) || 0;
-    const basic = qty * rate;
-    const exc = basic * ((Number(it.excisePercent) || 0) / 100);
-    const vat = (basic + exc) * ((Number(it.vatPercent) || 0) / 100);
-    return { basic, exc, vat, total: basic + exc + vat };
-  };
-
-  const computeGrandTotal = () => {
-    const items = manualSale.items || [];
-    return items.reduce((s, it) => s + (computeItemTotals(it).total || 0), 0);
-  };
-
   const submitManualSale = async () => {
     const gt = Number(manualSale.grandTotal) || computeGrandTotal();
     if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !gt) {
@@ -776,16 +935,34 @@ export default function Sales() {
     try {
       const items = (manualSale.items || []).map(it => {
         const t = computeItemTotals(it);
-        return { ...it, basicAmount: t.basic, exciseAmount: t.exc, vatAmount: t.vat, grandTotal: t.total };
+        return {
+          product: it.product,
+          productName: it.productName,
+          customerType: it.customerType,
+          ml: it.ml,
+          up: it.up,
+          quantity: Number(it.quantity) || 0,
+          rate: Number(it.rate) || 0,
+          exciseAmount: Number(it.exciseAmount) || 0,
+          vatAmount: Number(it.vatAmount) || 0,
+          basicAmount: t.basic,
+          grandTotal: t.total,
+        };
       });
       const payload = {
         ...manualSale,
         items,
-        grandTotal: Number(manualSale.grandTotal) || items.reduce((s,i) => s + (i.grandTotal||0), 0),
-        collectedAmount: manualSale.collectedAmount ? Number(manualSale.collectedAmount) : (Number(manualSale.grandTotal) || items.reduce((s,i) => s + (i.grandTotal||0), 0)),
+        grandTotal: Number(manualSale.grandTotal) || items.reduce((s, i) => s + (i.grandTotal || 0), 0),
+        collectedAmount: manualSale.collectedAmount
+          ? Number(manualSale.collectedAmount)
+          : (Number(manualSale.grandTotal) || items.reduce((s, i) => s + (i.grandTotal || 0), 0)),
       };
 
-      const endpoint = manualSale.order ? '/sales/from-order' : '/sales/manual';
+      const endpoint = selectedOrder ? '/sales/from-order' : '/sales/manual';
+      if (!selectedOrder) {
+        delete payload.order;
+        delete payload.orderNumber;
+      }
       await api.post(endpoint, payload);
       toast.success(entryMode === 'from-order' ? 'Sale created from order and invoice generated.' : 'Manual sale saved and province totals refreshed.');
       setEntryMode('choice');
@@ -796,7 +973,7 @@ export default function Sales() {
         dealer: '',
         province: '',
         area: '',
-        items: [{ product: '', productName: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13, discountPercent: 0, discountAmount: 0 }],
+        items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
         grandTotal: '',
         collectedAmount: '',
         paymentType: 'cash',
@@ -916,12 +1093,28 @@ export default function Sales() {
             <div>
               <label className="text-xs font-medium text-slate-600">Salesperson</label>
               <select value={manualSale.salesperson} onChange={e => handleManualInput('salesperson', e.target.value)}
-                className="input mt-1 w-full text-xs">
+                className="input mt-1 w-full text-xs"
+                disabled={user?.role !== 'admin'}>
                 <option value="">Select salesperson</option>
-                {salespersons.map(sp => (
-                  <option key={sp._id} value={sp._id}>{sp.fullName} · {sp.area}</option>
-                ))}
+                {assignedSalespersonId && (
+                  <option key={`${assignedSalespersonId}-assigned`} value={assignedSalespersonId}>
+                    {assignedSalespersonLabel || 'Assigned sales officer'}
+                  </option>
+                )}
+                {salespersons
+                  .filter(sp => String(sp._id) !== assignedSalespersonId)
+                  .map(sp => (
+                    <option key={sp._id} value={sp._id}>{getStaffName(sp)} · {sp.area}</option>
+                  ))}
               </select>
+              {assignedSalespersonLabel && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Assigned from dealer: {assignedSalespersonLabel}
+                </p>
+              )}
+              {user?.role !== 'admin' && (
+                <p className="text-xs text-slate-500 mt-1">Salesperson is assigned from dealer hierarchy and cannot be changed.</p>
+              )}
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">Dealer</label>
@@ -929,16 +1122,19 @@ export default function Sales() {
                 className="input mt-1 w-full text-xs">
                 <option value="">Select dealer</option>
                 {dealers.map(d => (
-                  <option key={d._id} value={d._id}>{d.dealerName} · {d.area}</option>
+                  <option key={d._id} value={d._id}>{d.dealerName} · {d.address || d.area}</option>
                 ))}
               </select>
+              {dealerWarning && (
+                <p className="text-xs text-amber-700 mt-1">{dealerWarning}</p>
+              )}
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">Province</label>
               <input value={manualSale.province} readOnly className="input mt-1 w-full text-xs bg-slate-50" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Area</label>
+              <label className="text-xs font-medium text-slate-600">Address</label>
               <input value={manualSale.area} readOnly className="input mt-1 w-full text-xs bg-slate-50" />
             </div>
             <div>
@@ -984,93 +1180,58 @@ export default function Sales() {
             </div>
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold">Order Items</p>
-              <button type="button" onClick={addItemRow} className="text-xs px-3 py-1 rounded-lg border">Add Row</button>
+          {/* Items Spreadsheet */}
+          <div className="card p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100" style={{ background: '#1e3a8a' }}>
+              <span className="text-white font-semibold text-sm">📋 Order Items Sheet</span>
+              <button type="button" onClick={addItemRow}
+                className="flex items-center gap-1 text-xs bg-white text-primary-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50">
+                <FiPlus size={12} /> Add Row
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="text-xs text-slate-500">
-                    <th className="p-2 text-left">#</th>
-                    <th className="p-2 text-left">Product Name</th>
-                    <th className="p-2 text-right">Qty</th>
-                    <th className="p-2 text-right">Rate</th>
-                    <th className="p-2 text-right">Discount %</th>
-                    <th className="p-2 text-right">Discount</th>
-                    <th className="p-2 text-right">Basic</th>
-                    <th className="p-2 text-right">Excise %</th>
-                    <th className="p-2 text-right">Excise Amt</th>
-                    <th className="p-2 text-right">VAT %</th>
-                    <th className="p-2 text-right">VAT Amt</th>
-                    <th className="p-2 text-right">Grand Total</th>
-                    <th className="p-2 text-center">Action</th>
+                  <tr style={{ background: '#1e40af', color: '#fff' }}>
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold w-8">#</th>
+                    <th className="px-2 py-2.5 text-left text-xs font-semibold min-w-40">Product Name</th>
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Cust. Type</th>
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">ML</th>
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">UP</th>
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Quantity</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-24">Rate (NPR)</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amount</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise Amt</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT Amt</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-32" style={{ background: '#14532d' }}>Grand Total</th>
+                    <th className="px-2 py-2.5 w-8"></th>
+                  </tr>
+                  <tr style={{ background: '#dbeafe', fontSize: '10px', color: '#475569' }}>
+                    <td></td>
+                    <td className="px-2 py-1">Select from list</td>
+                    <td className="px-2 py-1 text-center">MM / ADPL</td>
+                    <td className="px-2 py-1 text-center">Auto</td>
+                    <td className="px-2 py-1 text-center">Auto</td>
+                    <td className="px-2 py-1 text-center">Enter qty</td>
+                    <td className="px-2 py-1 text-right">Auto-filled</td>
+                    <td className="px-2 py-1 text-right font-medium text-blue-700">= Qty × Rate</td>
+                    <td className="px-2 py-1 text-right text-orange-600">Auto from product</td>
+                    <td className="px-2 py-1 text-right text-blue-600">Auto from product</td>
+                    <td className="px-2 py-1 text-right font-bold text-green-700">= Basic+Exc+VAT</td>
+                    <td></td>
                   </tr>
                 </thead>
                 <tbody>
-                  {(manualSale.items || []).map((it, idx) => {
-                    const t = computeItemTotals(it);
-                    return (
-                      <tr key={idx} className="border-t">
-                        <td className="p-2 text-xs">{idx + 1}</td>
-                        <td className="p-2">
-                          <select value={it.product || ''} onChange={e => handleProductSelect(idx, e.target.value)}
-                            className="input text-xs w-full">
-                            <option value="">-- Select --</option>
-                            {products.map(p => (
-                              <option key={p._id} value={p._id}>{p.productName} · {p.sku}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" value={it.quantity} onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
-                            className="input text-xs w-20 text-right" />
-                        </td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" step="0.01" value={it.rate} onChange={e => handleItemChange(idx, 'rate', e.target.value)}
-                            className="input text-xs w-28 text-right" />
-                        </td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" max="100" value={it.discountPercent || 0} onChange={e => handleItemChange(idx, 'discountPercent', e.target.value)}
-                            className="input text-xs w-20 text-right" />
-                        </td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" step="0.01" value={it.discountAmount || 0} onChange={e => handleItemChange(idx, 'discountAmount', e.target.value)}
-                            className="input text-xs w-24 text-right" />
-                        </td>
-                        <td className="p-2 text-right text-xs">{t.basic.toFixed(2)}</td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" max="100" value={it.excisePercent} onChange={e => handleItemChange(idx, 'excisePercent', e.target.value)}
-                            className="input text-xs w-20 text-right" />
-                        </td>
-                        <td className="p-2 text-right text-xs">{t.exc.toFixed(2)}</td>
-                        <td className="p-2 text-right">
-                          <input type="number" min="0" max="100" value={it.vatPercent} onChange={e => handleItemChange(idx, 'vatPercent', e.target.value)}
-                            className="input text-xs w-20 text-right" />
-                        </td>
-                        <td className="p-2 text-right text-xs">{t.vat.toFixed(2)}</td>
-                        <td className="p-2 text-right font-medium">{t.total.toFixed(2)}</td>
-                        <td className="p-2 text-center">
-                          <button type="button" onClick={() => removeItemRow(idx)} className="text-xs text-red-600">Remove</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {(manualSale.items || []).map((item, idx) => (
+                    <SalesItemRow key={idx} index={idx} item={item} products={products}
+                      onChange={handleItemChange} onRemove={removeItemRow} />
+                  ))}
+                  {!manualSale.items?.length && (
+                    <tr><td colSpan={12} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
+                  )}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t">
-                    <td colSpan={4} className="p-2 text-right text-xs font-semibold">TOTALS →</td>
-                    <td className="p-2 text-right" />
-                    <td className="p-2 text-right" />
-                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).basic, 0).toFixed(2)}</td>
-                    <td className="p-2 text-right" />
-                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).exc, 0).toFixed(2)}</td>
-                    <td className="p-2 text-right" />
-                    <td className="p-2 text-right text-xs font-semibold">{(manualSale.items || []).reduce((s, it) => s + computeItemTotals(it).vat, 0).toFixed(2)}</td>
-                    <td className="p-2 text-right text-lg font-bold">NPR {computeGrandTotal().toFixed(2)}</td>
-                    <td className="p-2" />
-                  </tr>
+                  <SalesTotalsRow items={manualSale.items || []} />
                 </tfoot>
               </table>
             </div>

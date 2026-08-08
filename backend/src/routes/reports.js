@@ -2,7 +2,7 @@ const router = require('express').Router();
 const c = require('../controllers/reportController');
 const { protect, authorize } = require('../middleware/auth');
 
-router.use(protect, authorize('admin', 'staff'));
+router.use(protect, authorize('admin', 'nsm', 'rsm', 'asm', 'se'));
 
 router.get('/sales',                   c.salesReport);
 router.get('/collections',             c.collectionReport);

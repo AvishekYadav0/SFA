@@ -1,32 +1,41 @@
 const mongoose = require('mongoose');
 
 const collectionSchema = new mongoose.Schema({
-  dealer:              { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer', required: true },
-  dealerName:          String,
-  province:            { type: String, required: true },
-  staffId:             { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  openingBalance:      { type: Number, default: 0 },
-  currentOrderAmount:  { type: Number, default: 0 },
-  totalDue:            { type: Number, default: 0 },
-  week1:               { type: Number, default: 0 },
-  week2:               { type: Number, default: 0 },
-  week3:               { type: Number, default: 0 },
-  week4:               { type: Number, default: 0 },
-  totalCollection:     { type: Number, default: 0 },
-  closingBalance:      { type: Number, default: 0 },
-  month:               String,
-  year:                Number,
-  remarks:             String,
-  createdBy:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  collectionNumber: { type: String, unique: true },
+  date:        { type: Date, default: Date.now },
+
+  dealer:      { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer', required: true },
+  se:          { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  so:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  asm:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rsm:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  nsm:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+  amount:      { type: Number, required: true },
+  paymentType: { type: String, enum: ['cash', 'bank', 'online', 'cheque'], default: 'cash' },
+  referenceNo: String,
+  remarks:     String,
+
+  province:    String,
+  district:    String,
+  area:        String,
+  region:      String,
+
+  status:      { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+  verifiedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  verifiedAt:  Date,
+
+  createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-collectionSchema.index({ staffId: 1, month: 1, year: 1 });
+collectionSchema.index({ se: 1, date: -1 });
 collectionSchema.index({ dealer: 1 });
 
-collectionSchema.pre('save', function (next) {
-  this.totalDue        = this.openingBalance + this.currentOrderAmount;
-  this.totalCollection = this.week1 + this.week2 + this.week3 + this.week4;
-  this.closingBalance  = this.totalDue - this.totalCollection;
+collectionSchema.pre('save', async function (next) {
+  if (!this.collectionNumber) {
+    const count = await mongoose.model('Collection').countDocuments();
+    this.collectionNumber = `COL-${String(count + 1).padStart(6, '0')}`;
+  }
   next();
 });
 

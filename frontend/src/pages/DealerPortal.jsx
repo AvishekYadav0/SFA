@@ -1,26 +1,23 @@
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { dealerService, claimService, productService } from '../services';
+import { dealerPortalService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { PageLoader } from '../components/common/Spinner';
-import { formatCurrency, formatDate } from '../components/common/index.jsx';
-import { FiUser, FiPhone, FiMapPin, FiCreditCard, FiShoppingBag, FiDollarSign, FiFileText, FiAlertCircle, FiPlus } from 'react-icons/fi';
-import { Modal } from '../components/common/Modal';
-import toast from 'react-hot-toast';
+import { FiUser, FiPhone, FiMapPin, FiCreditCard, FiShoppingBag, FiDollarSign, FiFileText, FiAlertCircle, FiTrendingUp, FiClock } from 'react-icons/fi';
+
+const fmt = (n) => new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 0 }).format(n || 0);
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NP') : '—';
 
 const STATUS_COLORS = {
-  pending:          'bg-amber-100 text-amber-700',
-  approved:         'bg-green-100 text-green-700',
-  rejected:         'bg-red-100 text-red-700',
-  completed:        'bg-blue-100 text-blue-700',
-  delivered:        'bg-teal-100 text-teal-700',
-  'Paid':           'bg-purple-100 text-purple-700',
-  'Approved':       'bg-green-100 text-green-700',
-  'Rejected':       'bg-red-100 text-red-700',
-  'Pending ASM Approval':      'bg-amber-100 text-amber-700',
-  'Pending RSM Approval':      'bg-orange-100 text-orange-700',
-  'Pending NSM Approval':      'bg-yellow-100 text-yellow-700',
-  'Pending Accounts Approval': 'bg-blue-100 text-blue-700',
+  pending:    'bg-amber-100 text-amber-700',
+  approved:   'bg-green-100 text-green-700',
+  delivered:  'bg-teal-100 text-teal-700',
+  completed:  'bg-blue-100 text-blue-700',
+  cancelled:  'bg-red-100 text-red-700',
+  dispatched: 'bg-purple-100 text-purple-700',
+  packed:     'bg-indigo-100 text-indigo-700',
+  draft:      'bg-slate-100 text-slate-600',
+  verified:   'bg-green-100 text-green-700',
+  rejected:   'bg-red-100 text-red-700',
 };
 
 const Badge = ({ status }) => (
@@ -29,189 +26,138 @@ const Badge = ({ status }) => (
   </span>
 );
 
-const CLAIM_TYPES = [
-  'Primary Scheme', 'Secondary Scheme', 'SLSB', 'RD', 'Transportation',
-  'Sampling', 'Leakage', 'Breakage', 'Display', 'Others',
-];
+const KPI = ({ icon: Icon, label, value, color = 'blue', sub }) => (
+  <div className="card p-5 flex items-start gap-4">
+    <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-${color}-100 dark:bg-${color}-900/30`}>
+      <Icon className={`text-lg text-${color}-600 dark:text-${color}-400`} />
+    </div>
+    <div>
+      <p className="text-xs text-slate-500 font-medium">{label}</p>
+      <p className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{value}</p>
+      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    </div>
+  </div>
+);
 
-const TABS = ['Orders', 'Collections', 'Claims'];
-
-function CreateClaimModal({ open, onClose, onSuccess }) {
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
-  const [products, setProducts] = useState([]);
-
-  useEffect(() => {
-    if (open) {
-      productService.getAll({ limit: 1000 }).then(r => setProducts(r.data.data));
-      reset();
-    }
-  }, [open, reset]);
-
-  const onSubmit = async (data) => {
-    try {
-      // In a real app, amount would be auto-calculated based on rules.
-      // Here we simulate it by taking a manual amount.
-      const amount = parseFloat(data.calculatedAmount);
-      if (isNaN(amount) || amount <= 0) {
-        toast.error('Please enter a valid claim amount.');
-        return;
-      }
-      await claimService.create({ ...data, calculatedAmount: amount });
-      toast.success('Claim submitted for approval!');
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit claim.');
-    }
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Submit New Claim">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Claim Type</label>
-            <select {...register('claimType', { required: true })} className="input">
-              {CLAIM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Claim Amount (NPR)</label>
-            <input {...register('calculatedAmount', { required: 'Amount is required', valueAsNumber: true })}
-              type="number" step="0.01" className="input" placeholder="Enter claim amount" />
-            {errors.calculatedAmount && <p className="text-danger text-xs mt-1">{errors.calculatedAmount.message}</p>}
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Associated Product (Optional)</label>
-            <select {...register('product')} className="input">
-              <option value="">None</option>
-              {products.map(p => <option key={p._id} value={p._id}>{p.productName}</option>)}
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Details / Justification</label>
-            <textarea {...register('details', { required: 'Details are required' })} className="input" rows="3" placeholder="Provide a clear reason for the claim..."></textarea>
-            {errors.details && <p className="text-danger text-xs mt-1">{errors.details.message}</p>}
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 pt-2">
-          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={isSubmitting}>
-            {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
+const TABS = ['Orders', 'Payments'];
 
 export default function DealerPortal() {
   const { user } = useAuth();
-  const [data, setData]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState('');
-  const [tab, setTab]       = useState('Orders');
-  const [claimModal, setClaimModal] = useState(false);
+  const [summary, setSummary]   = useState(null);
+  const [profile, setProfile]   = useState(null);
+  const [orders, setOrders]     = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [tab, setTab]           = useState('Orders');
 
   useEffect(() => {
-    dealerService.getMyProfile()
-      .then(r => setData(r.data.data))
-      .catch(e => setError(e.response?.data?.message || 'Failed to load dealer profile.'))
+    Promise.all([
+      dealerPortalService.getSummary(),
+      dealerPortalService.getProfile(),
+      dealerPortalService.getOrders({ limit: 50 }),
+      dealerPortalService.getPayments({ limit: 50 }),
+    ])
+      .then(([s, p, o, pay]) => {
+        setSummary(s.data.data);
+        setProfile(p.data.data);
+        setOrders(o.data.data || []);
+        setPayments(pay.data.data || []);
+      })
+      .catch(e => setError(e.response?.data?.message || 'Failed to load portal. Ask your admin to link your account to a dealer.'))
       .finally(() => setLoading(false));
   }, []);
-  
-  const fetchProfile = () => {
-    dealerService.getMyProfile()
-      .then(r => setData(r.data.data))
-      .catch(e => setError(e.response?.data?.message || 'Failed to load dealer profile.'))
-      .finally(() => setLoading(false));
-  }
-  
+
   if (loading) return <PageLoader />;
 
   if (error) return (
-    <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-24 gap-3">
       <FiAlertCircle className="text-4xl text-red-400" />
-      <p className="text-sm text-red-500">{error}</p>
-      <p className="text-xs text-slate-400">Ask your admin to link a dealer profile to your account.</p>
+      <p className="text-sm text-red-500 font-medium">{error}</p>
+      <p className="text-xs text-slate-400">Contact your admin to link a dealer profile to your account.</p>
     </div>
   );
 
-  const { dealer, orders = [], collections = [], claims = [] } = data;
-
-  // Outstanding = opening balance + total orders - total collected
-  const totalOrdered   = orders.reduce((s, o) => s + (o.grandTotal || 0), 0);
-  const totalCollected = collections.reduce((s, c) => s + (c.totalCollection || 0), 0);
-  const outstanding    = (dealer.openingBalance || 0) + totalOrdered - totalCollected;
+  const creditPct = summary.creditLimit > 0
+    ? Math.min(100, Math.round((summary.outstandingBalance / summary.creditLimit) * 100))
+    : 0;
 
   return (
     <div className="space-y-6">
+
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{dealer.dealerName}</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{profile.dealerName}</h1>
         <p className="text-sm text-slate-500 mt-0.5">Dealer Portal · Welcome, {user?.name}</p>
       </div>
 
-      {/* Profile card */}
-      <div className="card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <InfoRow icon={FiUser}      label="Owner"        value={dealer.ownerName} />
-        <InfoRow icon={FiPhone}     label="Phone"        value={dealer.phone} />
-        <InfoRow icon={FiMapPin}    label="Address"      value={[dealer.address, dealer.area, dealer.province].filter(Boolean).join(', ')} />
-        <InfoRow icon={FiFileText}  label="VAT Number"   value={dealer.vatNumber || '—'} />
-        <InfoRow icon={FiFileText}  label="PAN Number"   value={dealer.panNumber || '—'} />
-        <InfoRow icon={FiCreditCard} label="Credit Limit" value={formatCurrency(dealer.creditLimit)} />
-        <InfoRow icon={FiDollarSign} label="Outstanding"  value={formatCurrency(outstanding)}
-          valueClass={outstanding > dealer.creditLimit ? 'text-red-600 font-bold' : 'text-slate-900 dark:text-white font-semibold'} />
+      {/* KPI row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <KPI icon={FiAlertCircle}  label="Outstanding Balance" value={fmt(summary.outstandingBalance)} color="red" />
+        <KPI icon={FiCreditCard}   label="Available Credit"    value={fmt(summary.availableCredit)}    color="green" />
+        <KPI icon={FiTrendingUp}   label="Monthly Purchase"    value={fmt(summary.monthlyPurchase)}    color="blue" />
+        <KPI icon={FiTrendingUp}   label="Yearly Purchase"     value={fmt(summary.yearlyPurchase)}     color="purple" />
+        <KPI icon={FiShoppingBag}  label="Total Orders"        value={summary.totalOrders}             color="orange" />
+        <KPI icon={FiClock}        label="Pending Orders"      value={summary.pendingOrders}           color="yellow" />
+        <KPI icon={FiDollarSign}   label="Total Paid"          value={fmt(summary.totalPaid)}          color="teal" />
       </div>
 
-      {/* Credit utilisation bar */}
-      {dealer.creditLimit > 0 && (
-        <div className="card">
-          <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-            <span>Credit Utilisation</span>
-            <span>{Math.min(100, Math.round((outstanding / dealer.creditLimit) * 100))}% of {formatCurrency(dealer.creditLimit)}</span>
+      {/* Credit utilisation */}
+      {summary.creditLimit > 0 && (
+        <div className="card p-5">
+          <div className="flex justify-between text-xs text-slate-500 mb-2">
+            <span className="font-medium">Credit Utilisation</span>
+            <span>{creditPct}% of {fmt(summary.creditLimit)}</span>
           </div>
           <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5">
             <div
-              className={`h-2.5 rounded-full transition-all ${outstanding > dealer.creditLimit ? 'bg-red-500' : outstanding > dealer.creditLimit * 0.8 ? 'bg-amber-400' : 'bg-green-500'}`}
-              style={{ width: `${Math.min(100, (outstanding / dealer.creditLimit) * 100)}%` }}
+              className={`h-2.5 rounded-full transition-all ${creditPct >= 100 ? 'bg-red-500' : creditPct >= 80 ? 'bg-amber-400' : 'bg-green-500'}`}
+              style={{ width: `${creditPct}%` }}
             />
           </div>
         </div>
       )}
 
+      {/* Profile info */}
+      <div className="card p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <InfoRow icon={FiUser}     label="Owner"       value={profile.ownerName} />
+        <InfoRow icon={FiPhone}    label="Phone"       value={profile.phone} />
+        <InfoRow icon={FiMapPin}   label="Address"     value={[profile.address, profile.area, profile.district, profile.province].filter(Boolean).join(', ')} />
+        <InfoRow icon={FiFileText} label="PAN Number"  value={profile.panNumber} />
+        <InfoRow icon={FiFileText} label="VAT Number"  value={profile.vatNumber} />
+        <InfoRow icon={FiUser}     label="Sales Executive" value={profile.se?.name} sub={profile.se?.phone} />
+      </div>
+
       {/* Tabs */}
       <div className="card p-0">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
-          <div className="flex">
-            {TABS.map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === t ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                {t}
-                <span className="ml-1.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full">
-                  {t === 'Orders' ? orders.length : t === 'Collections' ? collections.length : claims.length}
-                </span>
-              </button>
-            ))}
-          </div>
-          <button className="btn-primary mr-4" onClick={() => setClaimModal(true)}><FiPlus /> New Claim</button>
+        <div className="flex border-b border-slate-100 dark:border-slate-700">
+          {TABS.map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              {t}
+              <span className="ml-1.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full">
+                {t === 'Orders' ? orders.length : payments.length}
+              </span>
+            </button>
+          ))}
         </div>
 
-        {/* Orders tab */}
         {tab === 'Orders' && (
           orders.length === 0
             ? <Empty icon={FiShoppingBag} msg="No orders yet." />
             : (
               <div className="table-wrapper">
                 <table className="table">
-                  <thead><tr><th>Order #</th><th>Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
+                  <thead>
+                    <tr><th>Order #</th><th>Date</th><th>Amount</th><th>Payment</th><th>Status</th></tr>
+                  </thead>
                   <tbody>
                     {orders.map(o => (
                       <tr key={o._id}>
                         <td className="font-medium text-primary-600">{o.orderNumber}</td>
-                        <td>{formatDate(o.date)}</td>
-                        <td className="text-slate-500 text-xs">{o.items?.map(i => i.productName || i.product?.productName).filter(Boolean).join(', ') || '—'}</td>
-                        <td className="font-medium">{formatCurrency(o.grandTotal)}</td>
+                        <td>{fmtDate(o.date)}</td>
+                        <td className="font-semibold">{fmt(o.grandTotal)}</td>
+                        <td className="capitalize text-slate-500 text-xs">{o.paymentType}</td>
                         <td><Badge status={o.status} /></td>
                       </tr>
                     ))}
@@ -221,46 +167,24 @@ export default function DealerPortal() {
             )
         )}
 
-        {/* Collections tab */}
-        {tab === 'Collections' && (
-          collections.length === 0
-            ? <Empty icon={FiDollarSign} msg="No collection records yet." />
+        {tab === 'Payments' && (
+          payments.length === 0
+            ? <Empty icon={FiDollarSign} msg="No payment records yet." />
             : (
               <div className="table-wrapper">
                 <table className="table">
-                  <thead><tr><th>Month</th><th>Opening Bal.</th><th>Order Amt.</th><th>Collected</th><th>Closing Bal.</th></tr></thead>
+                  <thead>
+                    <tr><th>Collection #</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr>
+                  </thead>
                   <tbody>
-                    {collections.map(c => (
-                      <tr key={c._id}>
-                        <td className="font-medium">{c.month}</td>
-                        <td>{formatCurrency(c.openingBalance)}</td>
-                        <td>{formatCurrency(c.currentOrderAmount)}</td>
-                        <td className="text-green-600 font-medium">{formatCurrency(c.totalCollection)}</td>
-                        <td className={c.closingBalance > 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>{formatCurrency(c.closingBalance)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-        )}
-
-        {/* Claims tab */}
-        {tab === 'Claims' && (
-          claims.length === 0
-            ? <Empty icon={FiFileText} msg="No claims yet." />
-            : (
-              <div className="table-wrapper">
-                <table className="table">
-                  <thead><tr><th>Claim ID</th><th>Date</th><th>Type</th><th>Amount</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {claims.map(c => (
-                      <tr key={c._id}>
-                        <td className="font-medium text-primary-600">{c.claimId}</td>
-                        <td>{formatDate(c.createdAt)}</td>
-                        <td><span className="badge-info">{c.claimType}</span></td>
-                        <td className="font-medium">{formatCurrency(c.calculatedAmount)}</td>
-                        <td><Badge status={c.status} /></td>
+                    {payments.map(p => (
+                      <tr key={p._id}>
+                        <td className="font-medium text-primary-600">{p.collectionNumber}</td>
+                        <td>{fmtDate(p.date)}</td>
+                        <td className="font-semibold text-green-600">{fmt(p.amount)}</td>
+                        <td className="capitalize text-slate-500 text-xs">{p.paymentType}</td>
+                        <td className="text-slate-400 text-xs">{p.referenceNo || '—'}</td>
+                        <td><Badge status={p.status} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -269,17 +193,11 @@ export default function DealerPortal() {
             )
         )}
       </div>
-
-      <CreateClaimModal
-        open={claimModal}
-        onClose={() => setClaimModal(false)}
-        onSuccess={fetchProfile}
-      />
     </div>
   );
 }
 
-function InfoRow({ icon: Icon, label, value, valueClass }) {
+function InfoRow({ icon: Icon, label, value, sub }) {
   return (
     <div className="flex items-start gap-3">
       <div className="w-8 h-8 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -287,7 +205,8 @@ function InfoRow({ icon: Icon, label, value, valueClass }) {
       </div>
       <div>
         <p className="text-xs text-slate-400">{label}</p>
-        <p className={`text-sm ${valueClass || 'text-slate-900 dark:text-white font-medium'}`}>{value || '—'}</p>
+        <p className="text-sm text-slate-900 dark:text-white font-medium">{value || '—'}</p>
+        {sub && <p className="text-xs text-slate-400">{sub}</p>}
       </div>
     </div>
   );

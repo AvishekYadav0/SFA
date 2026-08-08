@@ -1,73 +1,76 @@
 const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema({
-  product:       { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
-  productName:   String,
-  quantity:      { type: Number, required: true },
-  rate:          { type: Number, required: true },
-  discountPercent:{ type: Number, default: 0 },
-  discountAmount:{ type: Number, default: 0 },
-  excisePercent: { type: Number, default: 0 },
-  vatPercent:    { type: Number, default: 0 },
-  basicAmount:   Number,
-  exciseAmount:  Number,
-  vatAmount:     Number,
-  grandTotal:    Number,
+  product:      { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  productName:  String,
+  ml:           String,
+  up:           String,
+  customerType: { type: String, enum: ['MM', 'ADPL'], default: 'MM' },
+  quantity:     { type: Number, required: true },
+  rate:         { type: Number, required: true },
+  exciseAmount: { type: Number, default: 0 },
+  vatAmount:    { type: Number, default: 0 },
+  basicAmount:  Number,
+  grandTotal:   Number,
 });
 
 const orderSchema = new mongoose.Schema({
-  orderNumber:       { type: String, unique: true },
-  date:              { type: Date, required: true, default: Date.now },
-  salesperson:       { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson', required: true },
-  dealer:            { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer', required: true },
-  area:              String,
-  province:          { type: String, default: '' },
-  staffId:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  items:             [orderItemSchema],
+  orderNumber:  { type: String, unique: true },
+  date:         { type: Date, default: Date.now },
+
+  // Hierarchy
+  se:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  so:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  asm:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rsm:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  nsm:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+  dealer:       { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer', required: true },
+  province:     String,
+  district:     String,
+  area:         String,
+  region:       String,
+
+  items:        [orderItemSchema],
+
   totalBasicAmount:  { type: Number, default: 0 },
   totalExciseAmount: { type: Number, default: 0 },
   totalVatAmount:    { type: Number, default: 0 },
   grandTotal:        { type: Number, default: 0 },
-  remarks:           String,
-  approvalRemarks:   String,
-  reviewAction:      { type: String, enum: ['submitted', 'saved', 'approved', 'rejected', 'hold'], default: 'submitted' },
-  reviewHistory:     [{
-    action: String,
-    remarks: String,
-    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    performedAt: { type: Date, default: Date.now },
-  }],
-  paymentType:       { type: String, enum: ['cash', 'online', 'credit'], default: 'cash' },
-  status:            {
+
+  paymentType:  { type: String, enum: ['cash', 'bank', 'credit', 'online'], default: 'cash' },
+  status:       {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'cancelled', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'],
+    enum: ['draft', 'pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'packed', 'dispatched', 'delivered', 'completed', 'cancelled', 'rejected'],
     default: 'pending',
   },
-  // pipeline tracking
-  approvedAt:        Date,
-  approvedBy:        { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  warehouseAt:       Date,
-  dispatchedAt:      Date,
-  deliveredAt:       Date,
-  // payment
-  collectedAmount:   { type: Number, default: 0 },
-  paymentMethod:     { type: String, enum: ['cash', 'online', 'credit', 'bank', 'esewa', 'fonepay', 'cheque'], default: 'cash' },
-  paidAt:            Date,
-  createdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+  remarks:      String,
+  approvalRemarks: String,
+
+  approvedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  approvedAt:   Date,
+  packedAt:     Date,
+  dispatchedAt: Date,
+  deliveredAt:  Date,
+  completedAt:  Date,
+
+  collectedAmount: { type: Number, default: 0 },
+  createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-orderSchema.index({ date: -1 });
-orderSchema.index({ salesperson: 1, date: -1 });
-orderSchema.index({ staffId: 1, date: -1 });
+orderSchema.index({ se: 1, date: -1 });
+orderSchema.index({ asm: 1, date: -1 });
+orderSchema.index({ rsm: 1, date: -1 });
 orderSchema.index({ status: 1 });
+orderSchema.index({ dealer: 1 });
 
 orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
     const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
+    this.orderNumber = `ORD-${String(count + 1).padStart(6, '0')}`;
   }
   next();
 });
 
 module.exports = mongoose.model('Order', orderSchema);
-

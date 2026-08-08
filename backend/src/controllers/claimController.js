@@ -181,19 +181,17 @@ exports.createClaim = async (req, res) => {
 
     const calculatedAmount = calculateAmount(claimType, req.body);
     const calcInputs = extractCalcInputs(claimType, req.body);
-    let approvers = {};
-    let initialStatus;
 
-    if (user.role === 'dealer') {
-      // Dealer is the submitter, find the SE for their area/province
-      const seApprover = await findApprover('se', user.province, user.area);
-      approvers.asmApprover = seApprover?._id || null; // The first step is SE, but the field is asmApprover in the logic. Let's find the SE and put them in the first slot.
-      initialStatus = 'Pending ASM Approval'; // This status corresponds to the first step in the chain (SE)
-    } else {
-      // Existing logic for staff members
-      approvers = await buildChainApprovers(user);
-      initialStatus = getInitialStatus(user.role, approvers);
+    // For dealer role, find the SE they report to and build chain from SE upward
+    let submitterForChain = user;
+    if (user.role === 'dealer' && user.reportsTo) {
+      const se = await User.findById(user.reportsTo);
+      if (!se) return res.status(400).json({ success: false, message: 'You are not assigned to a Sales Executive. Cannot submit claim.' });
+      submitterForChain = se;
     }
+
+    const approvers = await buildChainApprovers(submitterForChain);
+    const initialStatus = getInitialStatus(submitterForChain.role, approvers);
 
     const claim = await Claim.create({
       ...req.body,
@@ -212,20 +210,6 @@ exports.createClaim = async (req, res) => {
         remarks:      'Claim submitted',
       }],
     });
-
-    // If a dealer user is created, also create a corresponding dealer profile
-    if (claim.role === 'dealer') {
-      await Dealer.create({
-        userId:       claim._id,
-        dealerName:   claim.name,
-        ownerName:    claim.name,
-        phone:        claim.phone,
-        email:        claim.email,
-        province:     claim.province,
-        area:         claim.area,
-        status:       'active',
-      });
-    }
 
     res.status(201).json({ success: true, data: claim });
   } catch (err) {

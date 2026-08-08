@@ -6,192 +6,85 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Spinner } from './components/common/Spinner';
 
-const Landing = lazy(() => import('./pages/Landing'));
-const Login = lazy(() => import('./pages/Login'));
+// Pages
+const Login         = lazy(() => import('./pages/Login'));
 const AdminRegister = lazy(() => import('./pages/AdminRegister'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const StaffDashboard = lazy(() => import('./pages/StaffDashboard'));
-const Sales = lazy(() => import('./pages/Sales'));
-const Salespersons = lazy(() => import('./pages/Salespersons'));
-const Dealers = lazy(() => import('./pages/Dealers'));
-const Products = lazy(() => import('./pages/Products'));
-const Orders = lazy(() => import('./pages/Orders'));
-const Lifting = lazy(() => import('./pages/Lifting'));
-const Collections = lazy(() => import('./pages/Collections'));
-const Reports = lazy(() => import('./pages/Reports'));
-const Profile = lazy(() => import('./pages/Profile'));
-const DailyVisits = lazy(() => import('./pages/DailyVisits'));
-const Pipeline    = lazy(() => import('./pages/Pipeline'));
-const Settings    = lazy(() => import('./pages/Settings'));
-const Claims      = lazy(() => import('./pages/Claims'));
-const DealerPortal = lazy(() => import('./pages/DealerPortal'));
+const Landing       = lazy(() => import('./pages/Landing'));
+const Dashboard     = lazy(() => import('./pages/Dashboard'));
+const Users         = lazy(() => import('./pages/Users'));
+const Dealers       = lazy(() => import('./pages/Dealers'));
+const Products      = lazy(() => import('./pages/Products'));
+const Orders        = lazy(() => import('./pages/Orders'));
+const Collections   = lazy(() => import('./pages/Collections'));
+const Visits        = lazy(() => import('./pages/Visits'));
+const Reports       = lazy(() => import('./pages/Reports'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Profile       = lazy(() => import('./pages/Profile'));
+const Settings      = lazy(() => import('./pages/Settings'));
+const Lifting       = lazy(() => import('./pages/Lifting'));
+const Pipeline      = lazy(() => import('./pages/Pipeline'));
+const Sales         = lazy(() => import('./pages/Sales'));
+const DealerPortal  = lazy(() => import('./pages/DealerPortal'));
 
-// Admin-only Route
-const AdminRoute = ({ children }) => {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'admin' ? children : <Navigate to="/dashboard" replace />;
-};
+// Legacy pages
+const DailyVisits   = lazy(() => import('./pages/DailyVisits'));
+const Claims        = lazy(() => import('./pages/Claims'));
 
-// Blocks dealer role from staff-only pages
-const StaffRoute = ({ children }) => {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'dealer' ? <Navigate to="/dashboard" replace /> : children;
-};
+const Loader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-950">
+    <Spinner size="lg" />
+  </div>
+);
 
-// Logged-in Route
 const PrivateRoute = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <Loader />;
   return user ? children : <Navigate to="/login" replace />;
+};
+
+const RoleRoute = ({ children, roles }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <Loader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  return children;
 };
 
 const AppRoutes = () => {
   const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  if (loading) return <Loader />;
 
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-950">
-          <Spinner size="lg" />
-        </div>
-      }
-    >
+    <Suspense fallback={<Loader />}>
       <Routes>
+        {/* Public */}
+        <Route path="/"              element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        <Route path="/login"         element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/admin-register" element={user ? <Navigate to="/dashboard" replace /> : <AdminRegister />} />
 
-        {/* Public Routes */}
-        <Route
-          path="/"
-          element={
-            user
-              ? <Navigate to="/dashboard" replace />
-              : <Landing />
-          }
-        />
-
-        <Route
-          path="/login"
-          element={
-            user
-              ? <Navigate to="/dashboard" replace />
-              : <Login />
-          }
-        />
-
-        <Route
-          path="/admin-register"
-          element={
-            user
-              ? <Navigate to="/dashboard" replace />
-              : <AdminRegister />
-          }
-        />
-
-        <Route
-          path="/admin-signup"
-          element={<Navigate to="/admin-register" replace />}
-        />
-
-        {/* Protected Routes */}
-        <Route
-          element={
-            <PrivateRoute>
-              <AppLayout />
-            </PrivateRoute>
-          }
-        >
-
-          {/* Dashboard — dealer gets their own portal */}
-          <Route
-            path="/dashboard"
-            element={
-              user?.role === 'admin' ? <Dashboard />
-              : user?.role === 'dealer' ? <DealerPortal />
-              : <StaffDashboard />
-            }
-          />
-
-          {/* Staff + Admin (blocked for dealer) */}
-          <Route path="/daily-visits" element={<StaffRoute><DailyVisits /></StaffRoute>} />
-          <Route path="/sales"        element={<StaffRoute><Sales /></StaffRoute>} />
-          <Route path="/orders"       element={<StaffRoute><Orders /></StaffRoute>} />
-          <Route path="/pipeline"     element={<AdminRoute><Pipeline /></AdminRoute>} />
-          <Route path="/lifting"      element={<StaffRoute><Lifting /></StaffRoute>} />
-          <Route path="/collections"  element={<StaffRoute><Collections /></StaffRoute>} />
+        {/* Protected */}
+        <Route element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+          <Route path="/dashboard"    element={<Dashboard />} />
+          <Route path="/users"        element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Users /></RoleRoute>} />
+          <Route path="/dealers"      element={<Dealers />} />
+          <Route path="/products"     element={<RoleRoute roles={['nsm','asm','admin']}><Products /></RoleRoute>} />
+          <Route path="/orders"       element={<Orders />} />
+          <Route path="/pipeline"     element={<RoleRoute roles={['nsm','rsm','asm','admin']}><Pipeline /></RoleRoute>} />
+          <Route path="/sales"        element={<Sales />} />
+          <Route path="/collections"  element={<Collections />} />
+          <Route path="/visits"       element={<Visits />} />
+          <Route path="/reports"      element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Reports /></RoleRoute>} />
+          <Route path="/dealer-portal" element={<RoleRoute roles={['dealer']}><DealerPortal /></RoleRoute>} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/profile"      element={<Profile />} />
-          <Route path="/claims"       element={<StaffRoute><Claims /></StaffRoute>} />
-
-          {/* Admin Only */}
-          <Route
-            path="/salespersons"
-            element={
-              <AdminRoute>
-                <Salespersons />
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="/dealers"
-            element={
-              <AdminRoute>
-                <Dealers />
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="/products"
-            element={
-              <AdminRoute>
-                <Products />
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="/reports"
-            element={
-              <AdminRoute>
-                <Reports />
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="/settings"
-            element={
-              <AdminRoute>
-                <Settings />
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="*"
-            element={<Navigate to="/dashboard" replace />}
-          />
+          <Route path="/settings"     element={<RoleRoute roles={['nsm','admin']}><Settings /></RoleRoute>} />
+          <Route path="/lifting"      element={<Lifting />} />
+          <Route path="/daily-visits" element={<DailyVisits />} />
+          <Route path="/claims"       element={<Claims />} />
+          <Route path="*"             element={<Navigate to="/dashboard" replace />} />
         </Route>
 
-        {/* Global Fallback */}
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={user ? "/dashboard" : "/"}
-              replace
-            />
-          }
-        />
-
+        <Route path="*" element={<Navigate to={user ? '/dashboard' : '/'} replace />} />
       </Routes>
     </Suspense>
   );
@@ -199,39 +92,15 @@ const AppRoutes = () => {
 
 export default function App() {
   return (
-    <BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <AuthProvider>
           <AppRoutes />
-
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              style: {
-                borderRadius: '12px',
-                background: '#1e293b',
-                color: '#f8fafc',
-                fontSize: '14px',
-              },
-              success: {
-                iconTheme: {
-                  primary: '#22C55E',
-                  secondary: '#fff',
-                },
-              },
-              error: {
-                iconTheme: {
-                  primary: '#EF4444',
-                  secondary: '#fff',
-                },
-              },
-            }}
-          />
+          <Toaster position="top-right" toastOptions={{
+            style: { borderRadius: '12px', background: '#1e293b', color: '#f8fafc', fontSize: '14px' },
+            success: { iconTheme: { primary: '#22C55E', secondary: '#fff' } },
+            error:   { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
+          }} />
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

@@ -17,7 +17,7 @@ const NEPAL_PROVINCES = [
 const PAYMENT_METHODS = ['cash', 'bank', 'esewa', 'fonepay', 'cheque', 'credit'];
 
 // All active statuses (not rejected/cancelled) — show in sales
-const SALE_STATUSES = ['pending', 'approved', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
+const SALE_STATUSES = ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
 
 function normalizeSaleItems(items = []) {
   return (items || []).map(it => {
@@ -56,7 +56,6 @@ function buildInvoiceNumber() {
 router.get('/by-province', protect, async (req, res) => {
   try {
     const { range = 'all', from, to } = req.query;
-    const Salesperson = require('../models/Salesperson');
 
     const orderMatch = { status: { $in: SALE_STATUSES } };
     const manualMatch = { status: { $in: SALE_STATUSES }, order: { $exists: false } };
@@ -70,6 +69,8 @@ router.get('/by-province', protect, async (req, res) => {
       orderMatch.createdAt = dateFilter;
       manualMatch.createdAt = dateFilter;
     }
+
+    const User = require('../models/User');
 
     const orderResults = await Order.aggregate([
       { $match: orderMatch },
@@ -122,7 +123,7 @@ router.get('/by-province', protect, async (req, res) => {
       { $match: completedOrderMatch },
       {
         $group: {
-          _id:    { province: '$province', method: '$paymentMethod' },
+          _id:    { province: '$province', method: '$paymentType' },
           amount: { $sum: '$collectedAmount' },
           count:  { $sum: 1 },
         },
@@ -160,6 +161,35 @@ router.get('/by-province', protect, async (req, res) => {
     const manualMap = {};
     manualResults.forEach(item => { manualMap[item.province] = item; });
 
+    // Staff counts from User model (se/so/asm/rsm/nsm)
+    const staffCounts = await Order.aggregate([
+      { $match: { status: { $in: SALE_STATUSES } } },
+      {
+        $group: {
+          _id: '$province',
+          staffIds: { $addToSet: '$se' },
+          soIds:    { $addToSet: '$so' },
+          asmIds:   { $addToSet: '$asm' },
+        },
+      },
+    ]);
+    const staffCountMap = {};
+    staffCounts.forEach(s => {
+      const ids = new Set([
+        ...(s.staffIds || []), ...(s.soIds || []), ...(s.asmIds || [])
+      ].filter(Boolean).map(String));
+      staffCountMap[s._id] = ids.size;
+    });
+
+    // Also count all users with a province field
+    const userProvinceCounts = await User.aggregate([
+      { $match: { role: { $in: ['se','so','asm','rsm','nsm'] }, province: { $exists: true, $ne: null, $ne: '' } } },
+      { $group: { _id: '$province', count: { $sum: 1 } } },
+    ]);
+    userProvinceCounts.forEach(u => {
+      if (!staffCountMap[u._id]) staffCountMap[u._id] = u.count;
+    });
+
     const provinces = NEPAL_PROVINCES.map(name => {
       const order = provinceMap[name] || { province: name, totalOrders: 0, totalSales: 0, collected: 0, dealers: [] };
       const manual = manualMap[name] || { totalOrders: 0, totalSales: 0, collected: 0, dealers: [] };
@@ -176,18 +206,10 @@ router.get('/by-province', protect, async (req, res) => {
         outstanding,
         dealerCount: dealerSet.size,
         collectionRate: totalSales === 0 ? 0 : Math.round((collected / totalSales) * 100),
-        activeStaffCount: 0,
+        activeStaffCount: staffCountMap[name] || 0,
         paymentBreakdown: paymentMap[name] || {},
       };
     });
-
-    const staffCounts = await Salesperson.aggregate([
-      { $match: { status: 'active' } },
-      { $group: { _id: '$province', count: { $sum: 1 } } },
-    ]);
-    const staffMap = {};
-    staffCounts.forEach(s => { staffMap[s._id] = s.count; });
-    provinces.forEach(p => { p.activeStaffCount = staffMap[p.province] || 0; });
 
     const overall = provinces.reduce(
       (acc, item) => {
@@ -371,7 +393,8 @@ router.post('/manual', protect, async (req, res) => {
 
     return res.status(201).json({ success: true, data: sale });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('manual sale failed:', err);
+    return res.status(400).json({ success: false, message: err.message });
   }
 });
 
@@ -384,7 +407,7 @@ router.get('/eligible-orders', protect, async (req, res) => {
 
     const orders = await Order.find(match)
       .populate('dealer', 'dealerName area province')
-      .populate('salesperson', 'fullName employeeId')
+      .populate('so se asm rsm nsm', 'name employeeId role')
       .populate('items.product', 'productName sku rate')
       .sort('-createdAt');
 
@@ -438,7 +461,7 @@ router.post('/from-order', protect, async (req, res) => {
       order: sourceOrder._id,
       orderNumber: orderNumber || sourceOrder.orderNumber,
       invoiceNumber: buildInvoiceNumber(),
-      salesperson: salesperson || sourceOrder.salesperson,
+      salesperson: salesperson || sourceOrder.so || sourceOrder.se || sourceOrder.asm || sourceOrder.rsm || sourceOrder.nsm,
       dealer: dealer || sourceOrder.dealer,
       date: date ? new Date(date) : sourceOrder.date || new Date(),
       province: province || sourceOrder.province,
@@ -446,17 +469,21 @@ router.post('/from-order', protect, async (req, res) => {
       items: normalizedItems,
       grandTotal: finalGrandTotal,
       collectedAmount: collectedAmount ?? finalGrandTotal,
-      paymentType: paymentType || sourceOrder.paymentMethod || 'cash',
+      paymentType: paymentType || sourceOrder.paymentType || 'cash',
       status,
       staffId: req.user._id,
       createdBy: req.user._id,
       remarks,
     };
 
+    if (!saleData.salesperson) {
+      return res.status(400).json({ success: false, message: 'No salesperson assigned to this order' });
+    }
     const sale = await Sale.create(saleData);
     return res.status(201).json({ success: true, data: sale });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('manual sale failed:', err);
+    return res.status(400).json({ success: false, message: err.message });
   }
 });
 
@@ -477,7 +504,7 @@ router.get('/orders', protect, async (req, res) => {
     const total = await Order.countDocuments(match);
     const data  = await Order.find(match)
       .populate('dealer',      'dealerName area')
-      .populate('salesperson', 'fullName')
+      .populate('so se asm rsm nsm', 'name employeeId')
       .populate('staffId',     'name')
       .sort('-createdAt')
       .skip((+page - 1) * +limit)
@@ -510,31 +537,47 @@ router.get('/staff-by-province', protect, async (req, res) => {
     const { province } = req.query;
     if (!province) return res.status(400).json({ success: false, message: 'province required' });
 
-    const Salesperson = require('../models/Salesperson');
+    const User = require('../models/User');
 
-    const [staff, salesAgg] = await Promise.all([
-      Salesperson.find({ province }).select('fullName designation area employeeId status'),
-      Order.aggregate([
-        { $match: { province, status: { $in: SALE_STATUSES } } },
-        { $group: { _id: '$salesperson', totalSales: { $sum: '$grandTotal' }, collected: { $sum: '$collectedAmount' }, orderCount: { $sum: 1 } } },
-      ]),
-    ]);
+    // Get all orders for this province to collect every staff ID
+    const provinceOrders = await Order.find(
+      { province, status: { $in: SALE_STATUSES } },
+      'se so asm rsm nsm grandTotal collectedAmount'
+    ).lean();
 
+    // Collect unique staff IDs across all hierarchy fields
+    const staffIdSet = new Set();
     const salesMap = {};
-    salesAgg.forEach(s => { salesMap[String(s._id)] = s; });
+    provinceOrders.forEach(o => {
+      ['se','so','asm','rsm','nsm'].forEach(field => {
+        if (o[field]) {
+          const id = String(o[field]);
+          staffIdSet.add(id);
+          if (!salesMap[id]) salesMap[id] = { totalSales: 0, collected: 0, orderCount: 0 };
+          salesMap[id].totalSales += o.grandTotal || 0;
+          salesMap[id].collected  += o.collectedAmount || 0;
+          salesMap[id].orderCount += 1;
+        }
+      });
+    });
+
+    if (!staffIdSet.size) return res.json({ success: true, data: [] });
+
+    const staff = await User.find({ _id: { $in: [...staffIdSet] } })
+      .select('name role area province employeeId');
 
     const data = staff.map(sp => {
       const s = salesMap[String(sp._id)] || {};
       return {
         _id:        sp._id,
-        fullName:   sp.fullName,
-        designation:sp.designation,
-        area:       sp.area,
-        employeeId: sp.employeeId,
-        status:     sp.status,
-        totalSales: s.totalSales  || 0,
-        collected:  s.collected   || 0,
-        orderCount: s.orderCount  || 0,
+        fullName:   sp.name,
+        designation: sp.role?.toUpperCase(),
+        area:       sp.area || '—',
+        employeeId: sp.employeeId || '—',
+        status:     'active',
+        totalSales: s.totalSales || 0,
+        collected:  s.collected  || 0,
+        orderCount: s.orderCount || 0,
         outstanding: (s.totalSales || 0) - (s.collected || 0),
       };
     });
@@ -560,7 +603,7 @@ router.get('/records', protect, async (req, res) => {
     const total = await Sale.countDocuments(match);
     const data  = await Sale.find(match)
       .populate('order',       'orderNumber date grandTotal paymentType')
-      .populate('salesperson', 'fullName')
+        .populate('salesperson', 'name fullName role')
       .populate('dealer',      'dealerName area')
       .populate('staffId',     'name')
       .sort('-createdAt')

@@ -1,14 +1,10 @@
-const router = require('express').Router();
-const {
-  registerAdmin, checkAdmin, login, getMe, updateProfile, changePassword
-} = require('../controllers/authController');
-const { authenticateUser } = require('../middleware/auth');
-
-router.get('/check-admin', checkAdmin);
-router.post('/register-admin', registerAdmin);
-router.post('/login', login);
-router.get('/me', authenticateUser, getMe);
-router.put('/profile', authenticateUser, updateProfile);
-router.put('/change-password', authenticateUser, changePassword);
-
-module.exports = router;
+// auth.js
+const express = require('express');
+const r = express.Router();
+const c = require('../controllers/authController');
+const { protect } = require('../middleware/auth');
+r.get('/check-admin', c.checkAdmin);
+r.post('/login', c.login);
+r.get('/me', protect, c.getMe);
+r.put('/change-password', protect, c.changePassword);
+module.exports = r;

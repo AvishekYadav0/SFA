@@ -1,303 +1,282 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardService } from '../services';
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import {
-  FiShoppingCart, FiDollarSign, FiTruck, FiAlertCircle,
-  FiShoppingBag, FiPackage, FiUsers, FiTrendingUp,
-} from 'react-icons/fi';
-import { Skeleton } from '../components/common/Spinner';
-import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { useAuth } from '../context/AuthContext';
+import { dashboardService } from '../services';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts';
+import { FiTrendingUp, FiUsers, FiShoppingBag, FiDollarSign, FiClipboard, FiMapPin, FiAlertCircle, FiCheckCircle, FiClock, FiTarget } from 'react-icons/fi';
+import { PageLoader } from '../components/common/Spinner';
 
-/* ── Stat Card ───────────────────────────────────────── */
-const StatCard = ({ icon: Icon, label, value, color, sub, onClick }) => (
-  <div
-    className={`card flex items-center gap-4 p-4 ${onClick ? 'cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-150' : ''}`}
-    onClick={onClick}
-  >
-    <div className="p-3 rounded-2xl flex-shrink-0" style={{ background: color }}>
-      <Icon className="text-xl text-white" />
+const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316'];
+
+const fmt = (n) => new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 0 }).format(n || 0);
+const fmtN = (n) => new Intl.NumberFormat('en-NP').format(n || 0);
+
+const KPI = ({ icon: Icon, label, value, sub, color = 'blue', trend }) => (
+  <div className="card p-5 flex items-start gap-4">
+    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-${color}-100 dark:bg-${color}-900/30`}>
+      <Icon className={`text-xl text-${color}-600 dark:text-${color}-400`} />
     </div>
-    <div className="min-w-0">
-      <p className="text-xs text-slate-500 truncate">{label}</p>
-      <p className="text-xl font-bold text-slate-900 dark:text-white">{value}</p>
+    <div className="flex-1 min-w-0">
+      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</p>
+      <p className="text-xl font-bold text-slate-900 dark:text-white mt-0.5 truncate">{value}</p>
       {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-      {onClick && <p className="text-xs text-primary-500 mt-0.5">Click to view all →</p>}
+      {trend !== undefined && (
+        <p className={`text-xs font-medium mt-1 ${trend >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+          {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% vs last month
+        </p>
+      )}
     </div>
   </div>
 );
 
-/* ── Main Dashboard ──────────────────────────────────── */
+const SectionTitle = ({ title, sub }) => (
+  <div className="mb-4">
+    <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
+    {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+  </div>
+);
+
 export default function Dashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [data, setData] = useState(null);
+  const navigate  = useNavigate();
+  const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
-  const isAdmin = user?.role === 'admin';
-  const getColor = (province) => ({
-    'Koshi Province': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
-    'Madhesh Province': { bg: '#F0FDF4', border: '#22C55E', text: '#15803D' },
-    'Bagmati Province': { bg: '#F5F3FF', border: '#8B5CF6', text: '#6D28D9' },
-    'Gandaki Province': { bg: '#FFFBEB', border: '#F59E0B', text: '#B45309' },
-    'Lumbini Province': { bg: '#FEF2F2', border: '#EF4444', text: '#B91C1C' },
-    'Karnali Province': { bg: '#ECFEFF', border: '#06B6D4', text: '#0E7490' },
-    'Sudurpashchim Province': { bg: '#FDF4FF', border: '#EC4899', text: '#BE185D' },
-  }[province] || { bg: '#F8FAFC', border: '#94A3B8', text: '#475569' });
 
-  const fetchDashboard = () => {
-    dashboardService.get()
-      .then(r => setData(r.data.data))
-      .catch(() => { })
-      .finally(() => setLoading(false));
-  };
+  // Dealer role has its own portal — redirect immediately
+  useEffect(() => {
+    if (user?.role === 'dealer') navigate('/dealer-portal', { replace: true });
+  }, [user, navigate]);
 
   useEffect(() => {
-    fetchDashboard();
-
-    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchDashboard(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    const interval = setInterval(fetchDashboard, 30000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      clearInterval(interval);
-    };
+    dashboardService.get()
+      .then(r => setData(r.data.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {Array(6).fill(0).map((_, i) => <Skeleton key={i} className="h-24" />)}
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-40" />)}
-      </div>
-    </div>
-  );
+  if (loading) return <PageLoader />;
+  if (!data)   return <div className="text-center py-20 text-slate-400">Failed to load dashboard</div>;
+
+  const role = user?.role;
+
+  // ── Target progress ──────────────────────────────────────────────────────
+  const targetPct = data.target?.salesTarget
+    ? Math.min(100, Math.round((data.monthlySales / data.target.salesTarget) * 100))
+    : null;
 
   return (
     <div className="space-y-6">
 
-      {/* ── Nepal Overview ───────────────────────────── */}
-      <div>
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-          🇳🇵 Nepal — Overall Summary
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard icon={FiShoppingCart} label="Total Orders" color="#2563EB" onClick={() => navigate('/orders')} />
-          <StatCard icon={FiDollarSign} label="Total Sales" color="#22C55E" onClick={() => navigate('/sales')} />
-          <StatCard icon={FiDollarSign} label="Total Collection" color="#3B82F6" onClick={() => navigate('/collections')} />
-          <StatCard icon={FiAlertCircle} label="Outstanding" color="#EF4444" onClick={() => navigate('/collections')} />
-          <StatCard icon={FiShoppingBag} label="Active Dealers" color="#14B8A6" onClick={isAdmin ? () => navigate('/dealers') : undefined} />
-          <StatCard icon={FiUsers} label="Sales Staff" color="#6366F1" onClick={isAdmin ? () => navigate('/salespersons') : undefined} />
+      {/* Welcome */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Welcome back, {user?.name?.split(' ')[0]} 👋
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {new Date().toLocaleDateString('en-NP', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
         </div>
+        {targetPct !== null && (
+          <div className="card p-4 min-w-48">
+            <p className="text-xs text-slate-500 mb-2 font-medium">Monthly Target</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${targetPct}%` }} />
+              </div>
+              <span className="text-sm font-bold text-primary-600">{targetPct}%</span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">{fmt(data.monthlySales)} / {fmt(data.target?.salesTarget)}</p>
+          </div>
+        )}
       </div>
 
-      {/* ── Pending Alerts ───────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="card flex items-center gap-4 p-4 border-l-4 border-yellow-400 cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all duration-150"
-          onClick={() => navigate('/orders')}>
-          <div className="p-3 rounded-2xl bg-yellow-400 flex-shrink-0"><FiAlertCircle className="text-xl text-white" /></div>
-          <div>
-            <p className="text-sm text-slate-500">Pending Orders (awaiting approval)</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">{data?.pendingOrders ?? 0}</p>
-            <p className="text-xs text-primary-500 mt-0.5">Click to view all orders →</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4 p-4 border-l-4 border-orange-400 cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all duration-150"
-          onClick={() => navigate('/lifting')}>
-          <div className="p-3 rounded-2xl bg-orange-400 flex-shrink-0"><FiTruck className="text-xl text-white" /></div>
-          <div>
-            <p className="text-sm text-slate-500">Pending Lifting (not fully lifted)</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">{data?.pendingLifting ?? 0}</p>
-            <p className="text-xs text-primary-500 mt-0.5">Click to view all lifting →</p>
-          </div>
-        </div>
+      {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <KPI icon={FiTrendingUp}  label="Today's Sales"    value={fmt(data.todaySales)}        color="blue" />
+        <KPI icon={FiTrendingUp}  label="Monthly Sales"    value={fmt(data.monthlySales)}       color="green" />
+        <KPI icon={FiDollarSign}  label="Today Collection" value={fmt(data.todayCollection)}    color="purple" />
+        <KPI icon={FiDollarSign}  label="Monthly Collection" value={fmt(data.monthlyCollection)} color="indigo" />
+        <KPI icon={FiAlertCircle} label="Outstanding"      value={fmt(data.totalOutstanding)}   color="red" />
+        <KPI icon={FiShoppingBag} label="Total Dealers"    value={fmtN(data.totalDealers)}      sub={`${data.activeDealers} active`} color="orange" />
+        <KPI icon={FiClipboard}   label="Pending Orders"   value={fmtN(data.pendingOrders)}     color="yellow" />
+        <KPI icon={FiClipboard}   label="Total Orders"     value={fmtN(data.totalOrders)}       color="teal" />
+        {role === 'nsm' || role === 'admin' ? <>
+          <KPI icon={FiUsers} label="Total RSM" value={fmtN(data.totalRSM)} color="blue" />
+          <KPI icon={FiUsers} label="Total ASM" value={fmtN(data.totalASM)} color="green" />
+          <KPI icon={FiUsers} label="Total SE"  value={fmtN(data.totalSE)}  color="orange" />
+        </> : null}
+        {role === 'rsm' ? <>
+          <KPI icon={FiUsers} label="Total ASM" value={fmtN(data.totalASM)} color="green" />
+          <KPI icon={FiUsers} label="Total SE"  value={fmtN(data.totalSE)}  color="orange" />
+        </> : null}
+        {role === 'asm' ? <>
+          <KPI icon={FiUsers}  label="Total SE"     value={fmtN(data.totalSE)}     color="orange" />
+          <KPI icon={FiMapPin} label="Today Visits" value={fmtN(data.todayVisits)} color="teal" />
+        </> : null}
+        {role === 'se' ? <>
+          <KPI icon={FiUsers} label="Total SO"      value={fmtN(data.totalSO)}       color="yellow" />
+          <KPI icon={FiMapPin} label="Today Visits"   value={fmtN(data.todayVisits)}   color="teal" />
+          <KPI icon={FiMapPin} label="Monthly Visits" value={fmtN(data.totalVisits)}   color="blue" />
+        </> : null}
+        {role === 'so' ? <>
+          <KPI icon={FiMapPin} label="Today Visits"   value={fmtN(data.todayVisits)}   color="teal" />
+          <KPI icon={FiMapPin} label="Monthly Visits" value={fmtN(data.totalVisits)}   color="blue" />
+        </> : null}
       </div>
 
-      {/* ── Monthly Charts ───────────────────────────── */}
+      {/* ── Charts Row ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Monthly Sales</h3>
+
+        {/* Sales Trend */}
+        <div className="card p-5">
+          <SectionTitle title="Sales Trend (Last 7 Days)" />
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={data?.salesChart || []}>
+            <AreaChart data={data.salesTrend || []}>
               <defs>
                 <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                  <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(v) => formatCurrency(v)} />
-              <Area type="monotone" dataKey="sales" stroke="#2563EB" fill="url(#salesGrad)" strokeWidth={2} name="Sales" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="_id" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v) => fmt(v)} />
+              <Area type="monotone" dataKey="total" stroke="#3b82f6" fill="url(#salesGrad)" strokeWidth={2} name="Sales" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div className="card">
-          <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Monthly Collection</h3>
+
+        {/* Province Wise Sales */}
+        <div className="card p-5">
+          <SectionTitle title="Province Wise Sales" sub="This month" />
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={data?.collectionChart || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(v) => formatCurrency(v)} />
-              <Bar dataKey="collection" fill="#22C55E" radius={[4, 4, 0, 0]} name="Collection" />
+            <BarChart data={(data.provinceSales || []).slice(0, 7)} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis dataKey="_id" type="category" tick={{ fontSize: 10 }} width={100} />
+              <Tooltip formatter={(v) => fmt(v)} />
+              <Bar dataKey="total" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Sales" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* ── Top Products + Top Staff ──────────────────── */}
+      {/* ── Top Products & Dealers ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <FiPackage className="text-primary-600" /> Top Selling Products
-          </h3>
-          <div className="space-y-3">
-            {data?.topProducts?.length ? data.topProducts.map((p, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 flex-shrink-0">{i + 1}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{p.productName}</p>
-                  <p className="text-xs text-slate-500">
-                    {[p.brand, p.category, p.sku].filter(Boolean).join(' · ')} &nbsp;·&nbsp; {p.totalQty} {p.unit || 'units'}
-                  </p>
-                </div>
-                <p className="text-sm font-bold text-primary-600 flex-shrink-0">{formatCurrency(p.totalAmount)}</p>
-              </div>
-            )) : <p className="text-sm text-slate-400 text-center py-6">No sales data yet</p>}
-          </div>
-        </div>
 
-        <div className="card">
-          <h3 className="font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <FiTrendingUp className="text-indigo-600" /> Top Performing Staff
-          </h3>
-          <div className="space-y-3">
-            {data?.topStaff?.length ? data.topStaff.map((s, i) => {
-              const c = getColor(s.province);
-              return (
+        {/* Top Products */}
+        <div className="card p-5">
+          <SectionTitle title="Top Products" sub="By revenue this month" />
+          {(data.topProducts || []).length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">No data yet</p>
+          ) : (
+            <div className="space-y-3">
+              {(data.topProducts || []).slice(0, 8).map((p, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{i + 1}</div>
+                  <span className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-600 text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{s.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                        style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-                        {s.province.replace(' Province', '')}
-                      </span>
-                      <span className="text-xs text-slate-400">{s.orderCount} orders</span>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{p._id || 'Unknown'}</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white ml-2">{fmt(p.total)}</span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                      <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (p.total / (data.topProducts[0]?.total || 1)) * 100)}%` }} />
                     </div>
                   </div>
-                  <p className="text-sm font-bold text-indigo-600 flex-shrink-0">{formatCurrency(s.totalSales)}</p>
                 </div>
-              );
-            }) : <p className="text-sm text-slate-400 text-center py-6">No staff data yet</p>}
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Top Dealers */}
+        <div className="card p-5">
+          <SectionTitle title="Top Dealers" sub="By purchase this month" />
+          {(data.topDealers || []).length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">No data yet</p>
+          ) : (
+            <div className="space-y-3">
+              {(data.topDealers || []).slice(0, 8).map((d, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{d.dealer?.dealerName || 'Unknown'}</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white ml-2">{fmt(d.total)}</span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                      <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (d.total / (data.topDealers[0]?.total || 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Role-specific ranking tables ──────────────────────────────────── */}
+      {(role === 'nsm' || role === 'admin') && data.rsmRanking?.length > 0 && (
+        <div className="card p-5">
+          <SectionTitle title="RSM Performance Ranking" sub="Monthly sales" />
+          <div className="table-wrapper">
+            <table className="table">
+              <thead><tr><th>#</th><th>RSM Name</th><th>Monthly Sales</th></tr></thead>
+              <tbody>
+                {data.rsmRanking.map((r, i) => (
+                  <tr key={i}>
+                    <td className="font-bold text-primary-600">{i + 1}</td>
+                    <td className="font-medium">{r.user?.name || '—'}</td>
+                    <td className="font-bold text-green-600">{fmt(r.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Recent Orders ─────────────────────────────── */}
-      <div className="card p-0">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900 dark:text-white">Recent Orders</h3>
-          {isAdmin && <span className="text-xs text-slate-400">Province shown for admin</span>}
-        </div>
-        <div className="table-wrapper">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Order #</th>
-                <th>Dealer</th>
-                {isAdmin && <th>Province</th>}
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.recentOrders?.length ? data.recentOrders.map(o => {
-                const prov = o.province || o.dealer?.province || '';
-                const c = getColor(prov);
-                return (
-                  <tr key={o._id}>
-                    <td className="font-bold text-primary-600">{o.orderNumber}</td>
-                    <td>{o.dealer?.dealerName}</td>
-                    {isAdmin && (
-                      <td>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-                          {prov ? prov.replace(' Province', '') : '—'}
-                        </span>
-                      </td>
-                    )}
-                    <td className="font-medium">{formatCurrency(o.grandTotal)}</td>
-                    <td><StatusBadge status={o.status} /></td>
+      {role === 'rsm' && data.asmRanking?.length > 0 && (
+        <div className="card p-5">
+          <SectionTitle title="ASM Performance Ranking" sub="Monthly sales" />
+          <div className="table-wrapper">
+            <table className="table">
+              <thead><tr><th>#</th><th>ASM Name</th><th>Monthly Sales</th></tr></thead>
+              <tbody>
+                {data.asmRanking.map((r, i) => (
+                  <tr key={i}>
+                    <td className="font-bold text-primary-600">{i + 1}</td>
+                    <td className="font-medium">{r.user?.name || '—'}</td>
+                    <td className="font-bold text-green-600">{fmt(r.total)}</td>
                   </tr>
-                );
-              }) : (
-                <tr><td colSpan={isAdmin ? 5 : 4} className="text-center text-slate-400 py-8">No orders yet</td></tr>
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Recent Collections ────────────────────────── */}
-      <div className="card p-0">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
-          <h3 className="font-semibold text-slate-900 dark:text-white">Recent Collections</h3>
-        </div>
-        <div className="table-wrapper">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Dealer</th>
-                {isAdmin && <th>Province</th>}
-                <th>Opening Bal.</th>
-                <th>Order Amt.</th>
-                <th>Total Due</th>
-                <th>Collected</th>
-                <th>Closing Bal.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.recentCollections?.length ? data.recentCollections.map(c => {
-                const prov = c.province || c.dealer?.province || '';
-                const pc = getColor(prov);
-                return (
-                  <tr key={c._id}>
-                    <td className="font-medium">{c.dealer?.dealerName}</td>
-                    {isAdmin && (
-                      <td>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ background: pc.bg, color: pc.text, border: `1px solid ${pc.border}` }}>
-                          {prov ? prov.replace(' Province', '') : '—'}
-                        </span>
-                      </td>
-                    )}
-                    <td>{formatCurrency(c.openingBalance)}</td>
-                    <td>{formatCurrency(c.currentOrderAmount)}</td>
-                    <td className="font-medium">{formatCurrency(c.totalDue)}</td>
-                    <td className="text-green-600 font-medium">{formatCurrency(c.totalCollection)}</td>
-                    <td className={`font-bold ${c.closingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {formatCurrency(c.closingBalance)}
-                    </td>
+      {role === 'asm' && data.seRanking?.length > 0 && (
+        <div className="card p-5">
+          <SectionTitle title="Sales Executive Ranking" sub="Monthly sales" />
+          <div className="table-wrapper">
+            <table className="table">
+              <thead><tr><th>#</th><th>SE Name</th><th>Monthly Sales</th></tr></thead>
+              <tbody>
+                {data.seRanking.map((r, i) => (
+                  <tr key={i}>
+                    <td className="font-bold text-primary-600">{i + 1}</td>
+                    <td className="font-medium">{r.user?.name || '—'}</td>
+                    <td className="font-bold text-green-600">{fmt(r.total)}</td>
                   </tr>
-                );
-              }) : (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="text-center text-slate-400 py-8">No collections yet</td></tr>
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
     </div>
   );

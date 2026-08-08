@@ -5,7 +5,7 @@ const saleSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true, sparse: true },
   invoiceNumber:{ type: String, unique: true, sparse: true },
   manualSaleId: { type: String, unique: true, sparse: true },
-  salesperson: { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson' },
+    salesperson: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   dealer:      { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer' },
   province:    String,
   area:        String,

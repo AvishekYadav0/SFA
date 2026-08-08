@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useSearchParams } from 'react-router-dom';
-import { orderService, salespersonService, dealerService, productService } from '../services';
+import { orderService, userService, dealerService, productService } from '../services';
 import { useCrud } from '../hooks/useCrud';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Pagination } from '../components/common/Pagination';
@@ -24,32 +24,113 @@ const PROVINCE_COLORS = [
 ];
 const PAGE_SIZE = 10;
 
+const CUSTOMER_TYPES = ['MM', 'ADPL'];
+
+// Rate comes from product's customerPrice when customerType matches
+const getRateByCustomerType = (product, customerType) => {
+  if (!product) return 0;
+  if (product.customerType === customerType) return product.customerPrice || 0;
+  return 0; // price not configured for this type
+};
+
+const isPriceConfigured = (product, customerType) =>
+  product && product.customerType === customerType && (product.customerPrice || 0) > 0;
+
+const getDealerAssignedSalesperson = (dealer) => {
+  if (!dealer) return { id: '', label: '', role: null };
+
+  const getId = (item) => {
+    const raw = item?._id || item;
+    return raw != null ? String(raw) : '';
+  };
+
+  const resolve = (value, role) => {
+    if (!value) return null;
+    if (Array.isArray(value) && value.length) {
+      const first = value[0];
+      return {
+        id: getId(first),
+        label: first?.fullName || first?.name || '',
+        role,
+      };
+    }
+
+    return {
+      id: getId(value),
+      label: value?.fullName || value?.name || '',
+      role,
+    };
+  };
+
+  const directField = dealer.assignedRole;
+  if (directField) {
+    const direct = resolve(dealer[directField], directField.toUpperCase());
+    if (direct) return direct;
+  }
+
+  return resolve(dealer.so, 'SO')
+    || resolve(dealer.se, 'SE')
+    || resolve(dealer.asm, 'ASM')
+    || resolve(dealer.rsm, 'RSM')
+    || resolve(dealer.nsm, 'NSM')
+    || { id: '', label: '', role: null };
+};
+
+const getStaffName = (staff) => staff?.fullName || staff?.name || '';
+
+const getOrderSalesperson = (order) => {
+  const assigned = [
+    ['so', 'SO'], ['se', 'SE'], ['asm', 'ASM'], ['rsm', 'RSM'], ['nsm', 'NSM'],
+  ].find(([field]) => order?.[field]);
+  if (!assigned) return '—';
+  const staff = order[assigned[0]];
+  return `${getStaffName(staff)} (${assigned[1]})`;
+};
+
 /* ── helpers ─────────────────────────────────────────── */
-const calc = (qty, rate, excP, vatP) => {
-  const q = +qty || 0, r = +rate || 0, e = +excP || 0, v = +vatP || 0;
-  const basic = q * r;
-  const excise = basic * (e / 100);
-  const vat = (basic + excise) * (v / 100);
+const calc = (qty, rate, excAmt, vatAmt) => {
+  const q = +qty || 0;
+  const basic = q * (+rate || 0);
+  const excise = (+excAmt || 0) * q;
+  const vat = (+vatAmt || 0) * q;
   return { basic, excise, vat, total: basic + excise + vat };
 };
 
 /* ── live row ────────────────────────────────────────── */
-const ItemRow = ({ index, control, register, remove, products, onProductChange }) => {
+const ItemRow = ({ index, control, register, setValue, remove, products, onProductChange, onCustomerTypeChange }) => {
   const item = useWatch({ control, name: `items.${index}` }) || {};
-  const c = calc(item.quantity, item.rate, item.excisePercent, item.vatPercent);
+  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+  // filter products by selected customer type
+  const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+  const selectedProduct = products.find(p => p._id === item.product);
+  const priceWarning = item.product && item.customerType && !isPriceConfigured(selectedProduct, item.customerType);
   return (
     <tr style={{ background: index % 2 === 0 ? '#fff' : '#f8fafc' }}>
       <td className="px-2 py-1.5 text-center text-xs text-slate-400 font-medium">{index + 1}</td>
       <td className="px-2 py-1.5">
         <select
-          {...register(`items.${index}.product`, { required: true })}
-          onChange={e => onProductChange(index, e.target.value)}
+          value={item.product || ''}
+          onChange={e => { setValue(`items.${index}.product`, e.target.value); onProductChange(index, e.target.value, item.customerType); }}
           className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
         >
           <option value="">-- Select --</option>
-          {products.map(p => <option key={p._id} value={p._id}>{p.productName}</option>)}
+          {filteredProducts.map(p => <option key={p._id} value={p._id}>{p.productName}</option>)}
         </select>
       </td>
+      <td className="px-2 py-1.5">
+        <select
+          value={item.customerType || 'MM'}
+          onChange={e => { setValue(`items.${index}.customerType`, e.target.value); onCustomerTypeChange(index, e.target.value); }}
+          className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+        >
+          {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {priceWarning && (
+          <p className="text-red-500 text-xs mt-0.5 whitespace-nowrap">Price not configured</p>
+        )}
+      </td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 text-center">{item.ml || '—'}</td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 text-center">{item.up || '—'}</td>
       <td className="px-2 py-1.5">
         <input {...register(`items.${index}.quantity`, { valueAsNumber: true, min: 0 })}
           type="number" min="0"
@@ -57,28 +138,31 @@ const ItemRow = ({ index, control, register, remove, products, onProductChange }
       </td>
       <td className="px-2 py-1.5">
         <input {...register(`items.${index}.rate`, { valueAsNumber: true, min: 0 })}
-          type="number" step="0.01" min="0"
-          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 text-right" />
+          type="number" step="0.01" min="0" readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 text-right" />
       </td>
       <td className="px-2 py-1.5 text-right text-xs font-medium text-slate-700">{c.basic.toFixed(2)}</td>
       <td className="px-2 py-1.5">
-        <input {...register(`items.${index}.excisePercent`, { valueAsNumber: true, min: 0 })}
-          type="number" step="0.01" min="0"
-          className="w-16 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 text-center" />
+        <input {...register(`items.${index}.exciseAmount`, { valueAsNumber: true, min: 0 })}
+          type="number" step="0.01" min="0" readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-orange-50 text-orange-600 text-right" />
       </td>
-      <td className="px-2 py-1.5 text-right text-xs text-orange-600 font-medium">{c.excise.toFixed(2)}</td>
       <td className="px-2 py-1.5">
-        <input {...register(`items.${index}.vatPercent`, { valueAsNumber: true, min: 0 })}
-          type="number" step="0.01" min="0"
-          className="w-16 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500 text-center" />
+        <input {...register(`items.${index}.vatAmount`, { valueAsNumber: true, min: 0 })}
+          type="number" step="0.01" min="0" readOnly
+          className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-blue-50 text-blue-600 text-right" />
       </td>
-      <td className="px-2 py-1.5 text-right text-xs text-blue-600 font-medium">{c.vat.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{c.total.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-center">
         <button type="button" onClick={() => remove(index)}
           className="p-1 rounded text-red-400 hover:text-red-600 hover:bg-red-50">
           <FiMinus size={14} />
         </button>
+        <input type="hidden" {...register(`items.${index}.product`)} />
+        <input type="hidden" {...register(`items.${index}.customerType`)} />
+        <input type="hidden" {...register(`items.${index}.ml`)} />
+        <input type="hidden" {...register(`items.${index}.up`)} />
+        <input type="hidden" {...register(`items.${index}.productName`)} />
       </td>
     </tr>
   );
@@ -88,16 +172,14 @@ const ItemRow = ({ index, control, register, remove, products, onProductChange }
 const TotalsRow = ({ control }) => {
   const items = useWatch({ control, name: 'items' }) || [];
   const t = items.reduce((a, i) => {
-    const c = calc(i?.quantity, i?.rate, i?.excisePercent, i?.vatPercent);
+    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
     return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
   }, { basic: 0, excise: 0, vat: 0, total: 0 });
   return (
     <tr style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
-      <td colSpan={4} className="px-3 py-2 text-xs font-bold text-slate-600 text-right">TOTALS →</td>
+      <td colSpan={7} className="px-3 py-2 text-xs font-bold text-slate-600 text-right">TOTALS →</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-slate-800">{t.basic.toFixed(2)}</td>
-      <td className="px-2 py-2"></td>
       <td className="px-2 py-2 text-right text-xs font-bold text-orange-600">{t.excise.toFixed(2)}</td>
-      <td className="px-2 py-2"></td>
       <td className="px-2 py-2 text-right text-xs font-bold text-blue-600">{t.vat.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(t.total)}</td>
       <td></td>
@@ -115,12 +197,13 @@ const OrderDetail = ({ order }) => (
             <tr>
               <th className="px-3 py-2 text-left text-slate-500">#</th>
               <th className="px-3 py-2 text-left text-slate-500">Product</th>
+              <th className="px-3 py-2 text-center text-slate-500">Cust. Type</th>
+              <th className="px-3 py-2 text-center text-slate-500">ML</th>
+              <th className="px-3 py-2 text-center text-slate-500">UP</th>
               <th className="px-3 py-2 text-right text-slate-500">Qty</th>
               <th className="px-3 py-2 text-right text-slate-500">Rate</th>
               <th className="px-3 py-2 text-right text-slate-500">Basic Amt</th>
-              <th className="px-3 py-2 text-right text-slate-500">Excise%</th>
               <th className="px-3 py-2 text-right text-orange-500">Excise Amt</th>
-              <th className="px-3 py-2 text-right text-slate-500">VAT%</th>
               <th className="px-3 py-2 text-right text-blue-500">VAT Amt</th>
               <th className="px-3 py-2 text-right text-primary-600">Grand Total</th>
             </tr>
@@ -130,12 +213,13 @@ const OrderDetail = ({ order }) => (
               <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                 <td className="px-3 py-1.5 text-slate-400">{i + 1}</td>
                 <td className="px-3 py-1.5 font-medium text-slate-700">{item.productName || item.product?.productName}</td>
+                <td className="px-3 py-1.5 text-center">{item.customerType}</td>
+                <td className="px-3 py-1.5 text-center">{item.ml || '—'}</td>
+                <td className="px-3 py-1.5 text-center">{item.up || '—'}</td>
                 <td className="px-3 py-1.5 text-right">{item.quantity}</td>
                 <td className="px-3 py-1.5 text-right">{item.rate?.toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-right font-medium">{item.basicAmount?.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right">{item.excisePercent}%</td>
                 <td className="px-3 py-1.5 text-right text-orange-600">{item.exciseAmount?.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right">{item.vatPercent}%</td>
                 <td className="px-3 py-1.5 text-right text-blue-600">{item.vatAmount?.toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-right font-bold text-primary-600">{item.grandTotal?.toFixed(2)}</td>
               </tr>
@@ -143,11 +227,9 @@ const OrderDetail = ({ order }) => (
           </tbody>
           <tfoot style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
             <tr>
-              <td colSpan={4} className="px-3 py-2 text-right text-xs font-bold text-slate-600">TOTALS →</td>
+              <td colSpan={7} className="px-3 py-2 text-right text-xs font-bold text-slate-600">TOTALS →</td>
               <td className="px-3 py-2 text-right text-xs font-bold">{order.totalBasicAmount?.toFixed(2)}</td>
-              <td></td>
               <td className="px-3 py-2 text-right text-xs font-bold text-orange-600">{order.totalExciseAmount?.toFixed(2)}</td>
-              <td></td>
               <td className="px-3 py-2 text-right text-xs font-bold text-blue-600">{order.totalVatAmount?.toFixed(2)}</td>
               <td className="px-3 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(order.grandTotal)}</td>
             </tr>
@@ -172,21 +254,27 @@ export default function Orders() {
   const [deleting, setDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState({});
+  const [dealerWarning, setDealerWarning] = useState('');
+  const [assignedSalespersonId, setAssignedSalespersonId] = useState('');
+  const [assignedSalespersonLabel, setAssignedSalespersonLabel] = useState('');
+  const [assignedSalespersonRole, setAssignedSalespersonRole] = useState('');
   const [salespersons, setSalespersons] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [products, setProducts] = useState([]);
 
   const { register, handleSubmit, reset, control, setValue, formState: { isSubmitting } } = useForm({
-    defaultValues: { date: new Date().toISOString().split('T')[0], paymentType: 'cash', items: [{ product: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13 }] }
+    defaultValues: { date: new Date().toISOString().split('T')[0], paymentType: 'cash', items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }] }
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
+  const selectedSalesperson = useWatch({ control, name: 'salesperson' });
+  const selectedDealer = useWatch({ control, name: 'dealer' });
 
   // load full order set once (used for province grouping + client-side drill-down pagination)
   const loadOrders = () => crud.fetchAll({ limit: 1000 });
 
   useEffect(() => {
     loadOrders();
-    salespersonService.getAll({ limit: 200 }).then(r => setSalespersons(r.data.data || []));
+    userService.getAll({ limit: 200 }).then(r => setSalespersons((r.data.data || []).filter(s => ['nsm', 'rsm', 'asm', 'se', 'so'].includes(s.role))));
     dealerService.getAll({ limit: 200 }).then(r => setDealers(r.data.data || []));
     productService.getAll({ limit: 200 }).then(r => setProducts(r.data.data || []));
   }, []);
@@ -197,18 +285,27 @@ export default function Orders() {
       const dealerId  = searchParams.get('dealer')   || '';
       const province  = searchParams.get('province') || '';
       const area      = searchParams.get('area')     || '';
+      const dealer = dealers.find(d => d._id === dealerId);
+      const assignment = dealer ? getDealerAssignedSalesperson(dealer) : { id: '' };
+      const baseLabel = assignment.label || salespersons.find(sp => String(sp._id) === assignment.id)?.fullName || salespersons.find(sp => String(sp._id) === assignment.id)?.name || '';
+      const label = assignment.role ? `${baseLabel}(${assignment.role})` : baseLabel;
       setEditData(null);
       reset({
         date: new Date().toISOString().split('T')[0],
         dealer: dealerId,
+        salesperson: String(assignment.id || ''),
         province,
         area,
         paymentType: 'cash',
-        items: [{ product: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13 }],
+        items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
       });
+      setDealerWarning(assignment.id ? '' : 'No assigned employee found for selected dealer.');
+      setAssignedSalespersonId(String(assignment.id || ''));
+      setAssignedSalespersonLabel(label);
+      setAssignedSalespersonRole(assignment.role || '');
       setView('form');
     }
-  }, [searchParams, dealers]);
+  }, [searchParams, dealers, reset]);
 
   const allOrders = crud.data || [];
 
@@ -223,28 +320,74 @@ export default function Orders() {
   });
   const unassigned = allOrders.filter(o => !PROVINCES.includes(o.province));
 
-  const ordersInProvince = selectedProvince
-    ? (selectedProvince === '__unassigned__' ? unassigned : allOrders.filter(o => o.province === selectedProvince))
-    : [];
+  const ordersInProvince = selectedProvince === '__all__'
+    ? allOrders
+    : selectedProvince
+      ? (selectedProvince === '__unassigned__' ? unassigned : allOrders.filter(o => o.province === selectedProvince))
+      : [];
   const pageCount = Math.max(1, Math.ceil(ordersInProvince.length / PAGE_SIZE));
   const pagedOrders = ordersInProvince.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handleProductChange = (index, productId) => {
+  const handleProductChange = (index, productId, customerType) => {
     const p = products.find(x => x._id === productId);
     if (p) {
-      setValue(`items.${index}.rate`, p.rate);
-      setValue(`items.${index}.excisePercent`, p.excisePercent);
-      setValue(`items.${index}.vatPercent`, p.vatPercent);
+      const ct = customerType || 'MM';
+      setValue(`items.${index}.rate`,          getRateByCustomerType(p, ct));
+      setValue(`items.${index}.exciseAmount`,  p.exciseAmount || 0);
+      setValue(`items.${index}.vatAmount`,     p.vatAmount    || 0);
+      setValue(`items.${index}.ml`,            p.ml           || '');
+      setValue(`items.${index}.up`,            p.up           || '');
+      setValue(`items.${index}.productName`,   p.productName  || '');
+    } else {
+      setValue(`items.${index}.rate`,         0);
+      setValue(`items.${index}.exciseAmount`, 0);
+      setValue(`items.${index}.vatAmount`,    0);
+      setValue(`items.${index}.ml`,           '');
+      setValue(`items.${index}.up`,           '');
+      setValue(`items.${index}.productName`,  '');
     }
+  };
+
+  const handleCustomerTypeChange = (index, customerType) => {
+    // reset product and all auto-filled fields when customer type changes
+    setValue(`items.${index}.product`,      '');
+    setValue(`items.${index}.productName`,  '');
+    setValue(`items.${index}.ml`,           '');
+    setValue(`items.${index}.up`,           '');
+    setValue(`items.${index}.rate`,         0);
+    setValue(`items.${index}.exciseAmount`, 0);
+    setValue(`items.${index}.vatAmount`,    0);
   };
 
   const handleDealerChange = (dealerId) => {
     const d = dealers.find(x => x._id === dealerId);
     if (d) {
-      setValue('province', d.province);
-      setValue('area', d.area);
+      const assignment = getDealerAssignedSalesperson(d);
+      const baseLabel = assignment.label || salespersons.find(sp => String(sp._id) === assignment.id)?.fullName || salespersons.find(sp => String(sp._id) === assignment.id)?.name || '';
+      const label = assignment.role ? `${baseLabel}(${assignment.role})` : baseLabel;
+      setValue('province', d.province || '');
+      setValue('area', d.address || d.area || '');
+      setValue('salesperson', String(assignment.id || ''), { shouldValidate: true, shouldDirty: true });
+      setDealerWarning(assignment.id ? '' : 'No assigned employee found for selected dealer.');
+      setAssignedSalespersonId(String(assignment.id || ''));
+      setAssignedSalespersonLabel(label);
+      setAssignedSalespersonRole(assignment.role || '');
+    } else {
+      setValue('province', '');
+      setValue('area', '');
+      setValue('salesperson', '');
+      setDealerWarning('');
+      setAssignedSalespersonId('');
+      setAssignedSalespersonLabel('');
+      setAssignedSalespersonRole('');
     }
   };
+
+  useEffect(() => {
+    if (view === 'form' && selectedDealer && dealers.length && salespersons.length) {
+      handleDealerChange(selectedDealer);
+    }
+  }, [view, selectedDealer, dealers, salespersons]);
 
   const openProvince = (name) => {
     setSelectedProvince(name);
@@ -264,7 +407,7 @@ export default function Orders() {
       date: new Date().toISOString().split('T')[0],
       province: prefillProvince && prefillProvince !== '__unassigned__' ? prefillProvince : '',
       paymentType: 'cash',
-      items: [{ product: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13 }],
+      items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
     });
     setView('form');
   };
@@ -277,7 +420,7 @@ export default function Orders() {
       salesperson: order.salesperson?._id || order.salesperson,
       dealer: order.dealer?._id || order.dealer,
       province: order.province || order.dealer?.province || '',
-      area: order.area || order.dealer?.area || '',
+      area: order.area || order.dealer?.address || order.dealer?.area || '',
       paymentType: order.paymentType || 'cash',
       items: order.items?.map(i => ({ ...i, product: i.product?._id || i.product })) || [],
     });
@@ -288,6 +431,13 @@ export default function Orders() {
 
   const onSubmit = async (data) => {
     try {
+      // Validate all items have a configured price
+      const invalid = data.items?.some(item => {
+        const p = products.find(x => x._id === item.product);
+        return !isPriceConfigured(p, item.customerType);
+      });
+      if (invalid) return toast.error('Price is not configured for the selected customer type.');
+
       if (editData) await crud.update(editData._id, data);
       else await crud.create(data);
       setView(selectedProvince ? 'list' : 'provinces');
@@ -321,7 +471,7 @@ export default function Orders() {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">
             {editData ? `Edit Order — ${editData.orderNumber}` : 'New Order Plan'}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">All amounts auto-calculated • Formula: Basic = Qty × Rate | Excise = Basic × Excise% | VAT = (Basic+Excise) × VAT%</p>
+          <p className="text-xs text-slate-500 mt-0.5">Excise & VAT amounts auto-filled from product • Grand Total = Basic + Excise + VAT</p>
         </div>
         <button className="btn-secondary" onClick={closeForm}>← Back to List</button>
       </div>
@@ -342,7 +492,7 @@ export default function Orders() {
                   <div><span className="font-medium">Order:</span> {editData.orderNumber || '—'}</div>
                   <div><span className="font-medium">Date:</span> {formatDate(editData.date)}</div>
                   <div><span className="font-medium">Dealer:</span> {editData.dealer?.dealerName || editData.dealer || '—'}</div>
-                  <div><span className="font-medium">Salesperson:</span> {editData.salesperson?.fullName || editData.salesperson || '—'}</div>
+                  <div><span className="font-medium">Salesperson:</span> {getOrderSalesperson(editData)}</div>
                   <div><span className="font-medium">Amount:</span> {formatCurrency(editData.grandTotal || 0)}</div>
                   <div><span className="font-medium">Payment:</span> {editData.paymentType || 'cash'}</div>
                 </div>
@@ -351,17 +501,36 @@ export default function Orders() {
               <>
                 <div>
                   <label className="label text-xs">Sales Person *</label>
-                  <select {...register('salesperson', { required: true })} className="input text-sm">
-                    <option value="">Select...</option>
-                    {salespersons.map(s => <option key={s._id} value={s._id}>{s.fullName}</option>)}
-                  </select>
+                  <Controller
+                    name="salesperson"
+                    control={control}
+                    rules={{ required: true }}
+                    render={({ field }) => (
+                      <select {...field} className="input text-sm">
+                        <option value="">Select...</option>
+                        {assignedSalespersonId && (
+                          <option key={`${assignedSalespersonId}-assigned`} value={assignedSalespersonId}>
+                            {assignedSalespersonLabel || 'Assigned sales officer'}
+                          </option>
+                        )}
+                                        {salespersons
+                                          .filter(s => String(s._id) !== assignedSalespersonId)
+                                          .map(s => <option key={s._id} value={String(s._id)}>{getStaffName(s)}</option>)}
+                      </select>
+                    )}
+                  />
+                  {assignedSalespersonLabel && (
+                    <p className="text-xs text-slate-500 mt-1">Assigned from dealer: {assignedSalespersonLabel} {assignedSalespersonRole ? `(${assignedSalespersonRole})` : ''}</p>
+                  )}
                 </div>
                 <div>
                   <label className="label text-xs">Dealer *</label>
-                  <select {...register('dealer', { required: true })} className="input text-sm"
-                    onChange={e => handleDealerChange(e.target.value)}>
+                  <select {...register('dealer', {
+                    required: true,
+                    onChange: e => handleDealerChange(e.target.value),
+                  })} className="input text-sm">
                     <option value="">Select...</option>
-                    {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.area}</option>)}
+                    {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.address || d.area}</option>)}
                   </select>
                 </div>
               </>
@@ -376,8 +545,8 @@ export default function Orders() {
               </select>
             </div>
             <div>
-              <label className="label text-xs">Area</label>
-              <input {...register('area')} className="input text-sm" placeholder="Area" />
+              <label className="label text-xs">Address</label>
+              <input {...register('area')} className="input text-sm" placeholder="Address" />
             </div>
             <div>
               <label className="label text-xs">Payment Type *</label>
@@ -406,7 +575,7 @@ export default function Orders() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700" style={{ background: '#1e3a8a' }}>
             <span className="text-white font-semibold text-sm">📋 Order Items Sheet</span>
             <button type="button"
-              onClick={() => append({ product: '', quantity: 1, rate: 0, excisePercent: 0, vatPercent: 13 })}
+              onClick={() => append({ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 })}
               className="flex items-center gap-1 text-xs bg-white text-primary-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50">
               <FiPlus size={12} /> Add Row
             </button>
@@ -418,12 +587,13 @@ export default function Orders() {
                 <tr style={{ background: '#1e40af', color: '#fff' }}>
                   <th className="px-2 py-2.5 text-center text-xs font-semibold w-8">#</th>
                   <th className="px-2 py-2.5 text-left text-xs font-semibold min-w-40">Product Name</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Cust. Type</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">ML</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">UP</th>
                   <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Quantity</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-24">Rate (NPR)</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amount</th>
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-16" style={{ background: '#92400e' }}>Excise %</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise Amt</th>
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-16" style={{ background: '#1e3a8a' }}>VAT %</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT Amt</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-32" style={{ background: '#14532d' }}>Grand Total</th>
                   <th className="px-2 py-2.5 w-8"></th>
@@ -431,13 +601,14 @@ export default function Orders() {
                 <tr style={{ background: '#dbeafe', fontSize: '10px', color: '#475569' }}>
                   <td></td>
                   <td className="px-2 py-1">Select from list</td>
+                  <td className="px-2 py-1 text-center">MM / ADPL</td>
+                  <td className="px-2 py-1 text-center">Auto</td>
+                  <td className="px-2 py-1 text-center">Auto</td>
                   <td className="px-2 py-1 text-center">Enter qty</td>
                   <td className="px-2 py-1 text-right">Auto-filled</td>
                   <td className="px-2 py-1 text-right font-medium text-blue-700">= Qty × Rate</td>
-                  <td className="px-2 py-1 text-center">%</td>
-                  <td className="px-2 py-1 text-right text-orange-600">= Basic × Exc%</td>
-                  <td className="px-2 py-1 text-center">%</td>
-                  <td className="px-2 py-1 text-right text-blue-600">= (Basic+Exc) × VAT%</td>
+                  <td className="px-2 py-1 text-right text-orange-600">Auto from product</td>
+                  <td className="px-2 py-1 text-right text-blue-600">Auto from product</td>
                   <td className="px-2 py-1 text-right font-bold text-green-700">= Basic+Exc+VAT</td>
                   <td></td>
                 </tr>
@@ -445,7 +616,7 @@ export default function Orders() {
               <tbody>
                 {fields.map((field, index) => (
                   <ItemRow key={field.id} index={index} control={control} register={register}
-                    remove={remove} products={products} onProductChange={handleProductChange} />
+                    setValue={setValue} remove={remove} products={products} onProductChange={handleProductChange} onCustomerTypeChange={handleCustomerTypeChange} />
                 ))}
                 {fields.length === 0 && (
                   <tr><td colSpan={11} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
@@ -511,7 +682,11 @@ export default function Orders() {
             );
           })}
           {/* Total summary box */}
-          <div className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-5 text-left border-2 border-slate-700 dark:border-slate-600">
+          <button
+            type="button"
+            onClick={() => openProvince('__all__')}
+            className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-5 text-left border-2 border-slate-700 dark:border-slate-600 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 group"
+          >
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 bg-slate-600 rounded-xl flex items-center justify-center shadow-sm">
                 <FiClipboard className="text-white text-xl" />
@@ -522,14 +697,19 @@ export default function Orders() {
             <p className="text-slate-400 text-xs mt-1">
               {formatCurrency(allOrders.reduce((s, o) => s + (o.grandTotal || 0), 0))} total
             </p>
-          </div>
+            <p className="text-xs mt-3 font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity">
+              Click to view all orders →
+            </p>
+          </button>
         </div>
       )}
     </div>
   );
 
   /* ── PROVINCE DRILL-DOWN LIST VIEW ─────────────────────── */
-  const provinceLabel = selectedProvince === '__unassigned__' ? 'Unspecified' : selectedProvince;
+  const provinceLabel = selectedProvince === '__all__'
+    ? 'All Provinces'
+    : selectedProvince === '__unassigned__' ? 'Unspecified' : selectedProvince;
 
   return (
     <div className="space-y-4">
@@ -546,14 +726,14 @@ export default function Orders() {
           <p className="text-sm text-slate-500 mt-0.5">{ordersInProvince.length} order{ordersInProvince.length === 1 ? '' : 's'}</p>
         </div>
         {canManage && (
-          <button className="btn-primary" onClick={() => openCreate(selectedProvince)}><FiPlus /> New Order</button>
+          <button className="btn-primary" onClick={() => openCreate(selectedProvince === '__all__' ? '' : selectedProvince)}><FiPlus /> New Order</button>
         )}
       </div>
 
       <div className="card p-0">
         {crud.loading ? <PageLoader /> : ordersInProvince.length === 0 ? (
-          <EmptyState icon={FiClipboard} title="No orders in this province" description="Create an order plan for this province"
-            action={canManage && <button className="btn-primary" onClick={() => openCreate(selectedProvince)}><FiPlus />New Order</button>} />
+          <EmptyState icon={FiClipboard} title={`No orders in ${provinceLabel}`} description="Create an order plan for this province"
+            action={canManage && <button className="btn-primary" onClick={() => openCreate(selectedProvince === '__all__' ? '' : selectedProvince)}><FiPlus />New Order</button>} />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -576,7 +756,7 @@ export default function Orders() {
                         className="border-b border-slate-100">
                         <td className="px-4 py-3 font-bold text-primary-600">{o.orderNumber}</td>
                         <td className="px-4 py-3 text-slate-600 text-xs">{formatDate(o.date)}</td>
-                        <td className="px-4 py-3 font-medium text-slate-700">{o.salesperson?.fullName}</td>
+                        <td className="px-4 py-3 font-medium text-slate-700">{getOrderSalesperson(o)}</td>
                         <td className="px-4 py-3 text-slate-600">{o.dealer?.dealerName}</td>
                         <td className="px-4 py-3 text-right font-bold text-slate-800">{formatCurrency(o.grandTotal)}</td>
                         <td className="px-4 py-3 text-center"><StatusBadge status={o.status} /></td>

@@ -1,22 +1,14 @@
-const router = require('express').Router();
-const {
-  getUsers, getUser, createStaff, updateUser, deleteUser, toggleStatus, resetPassword
-} = require('../controllers/userController');
-const { authenticateUser, authorize } = require('../middleware/auth');
-
-// All routes require login
-router.use(authenticateUser);
-
-// Read: any logged-in role can call GET / (scoped in controller)
-router.get('/', getUsers);
-router.get('/:id', getUser);
-
-// Write: admin, nsm, rsm, asm can manage users below them
-const canManage = authorize('admin', 'nsm', 'rsm', 'asm');
-router.post('/create-staff', canManage, createStaff);
-router.put('/:id', canManage, updateUser);
-router.delete('/:id', canManage, deleteUser);
-router.patch('/:id/status', canManage, toggleStatus);
-router.patch('/:id/reset-password', canManage, resetPassword);
-
-module.exports = router;
+const express = require('express');
+const r = express.Router();
+const c = require('../controllers/userController');
+const { protect, authorize } = require('../middleware/auth');
+r.use(protect);
+r.get('/',                    authorize('nsm','rsm','asm','se','admin'), c.getAll);
+r.get('/subordinates',        c.getSubordinates);
+r.get('/:id',                 c.getOne);
+r.post('/',                   authorize('nsm','rsm','asm','admin'), c.create);
+r.put('/:id',                 authorize('nsm','rsm','asm','admin'), c.update);
+r.patch('/:id/status',        authorize('nsm','rsm','asm','admin'), c.toggleStatus);
+r.put('/:id/reset-password',  authorize('nsm','admin'), c.resetPassword);
+r.delete('/:id',              authorize('nsm','admin'), c.remove);
+module.exports = r;

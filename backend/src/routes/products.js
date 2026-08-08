@@ -1,9 +1,11 @@
-const router = require('express').Router();
+const express = require('express');
+const r = express.Router();
 const c = require('../controllers/productController');
-const { protect, authorize } = require('../middleware/auth');
-
-router.use(protect);
-router.route('/').get(c.getAll).post(authorize('admin', 'staff'), c.create);
-router.route('/:id').get(c.getOne).put(authorize('admin', 'staff'), c.update).delete(authorize('admin'), c.remove);
-
-module.exports = router;
+const { protect } = require('../middleware/auth');
+r.use(protect);
+r.get('/',     c.getAll);
+r.get('/:id',  c.getOne);
+r.post('/',    c.create);
+r.put('/:id',  c.update);
+r.delete('/:id', c.remove);
+module.exports = r;

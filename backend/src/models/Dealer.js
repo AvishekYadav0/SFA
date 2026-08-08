@@ -1,24 +1,48 @@
 const mongoose = require('mongoose');
 
 const dealerSchema = new mongoose.Schema({
-  dealerName:     { type: String, required: true },
-  ownerName:      { type: String, required: true },
-  phone:          { type: String, required: true },
-  address:        String,
-  area:           { type: String, required: true },
-  province:       { type: String, default: '' },
-  district:       String,
-  vatNumber:      String,
-  panNumber:      String,
-  openingBalance: { type: Number, default: 0 },
-  creditLimit:    { type: Number, default: 0 },
-  status:         { type: String, enum: ['active', 'inactive'], default: 'active' },
-  soleDealerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'SoleDealer', default: null },
-  // SE assigned to manage this dealer
-  assignedTo:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  // User account linked to this dealer (for dealer login portal)
-  linkedUser:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  createdBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  dealerName:      { type: String, required: true },
+  dealerCode:      { type: String, unique: true, sparse: true },
+  ownerName:       String,
+  phone:           String,
+  email:           String,
+  address:         String,
+  panNumber:       String,
+  vatNumber:       String,
+  province:        String,
+  district:        String,
+  area:            String,
+  region:          String,
+  latitude:        Number,
+  longitude:       Number,
+
+  // Hierarchy
+  se:              { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  so:              [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  asm:             { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rsm:             { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  nsm:             { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedRole:    { type: String, enum: ['so', 'se', 'asm', 'rsm', 'nsm'], default: null },
+
+  creditLimit:     { type: Number, default: 0 },
+  outstandingAmount: { type: Number, default: 0 },
+
+  status:          { type: String, enum: ['active', 'inactive'], default: 'active' },
+  performanceScore: { type: Number, default: 0 },
+  growthPercent:   { type: Number, default: 0 },
+
+  lastOrderDate:   Date,
+  lastVisitDate:   Date,
+  totalOrders:     { type: Number, default: 0 },
+  monthlyPurchase: { type: Number, default: 0 },
+  yearlyPurchase:  { type: Number, default: 0 },
+
+  createdBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  linkedUser:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
+
+dealerSchema.virtual('availableCredit').get(function () {
+  return this.creditLimit - this.outstandingAmount;
+});
 
 module.exports = mongoose.model('Dealer', dealerSchema);

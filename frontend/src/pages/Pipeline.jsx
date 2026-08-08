@@ -32,6 +32,15 @@ const STAGES = [
 
 const STATUS_MAP = Object.fromEntries(STAGES.map(s => [s.key, s]));
 
+const getOrderSalesperson = (order) => {
+  const assigned = [
+    ['so', 'SO'], ['se', 'SE'], ['asm', 'ASM'], ['rsm', 'RSM'], ['nsm', 'NSM'],
+  ].find(([field]) => order?.[field]);
+  if (!assigned) return '—';
+  const staff = order[assigned[0]];
+  return `${staff?.name || staff?.fullName || '—'} (${assigned[1]})`;
+};
+
 export default function Pipeline() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
@@ -239,7 +248,7 @@ function OrderCard({ order, stage, moving, onMove, onReject, onHold, onReview, o
 
       <div className="space-y-0.5">
         <p className="text-xs font-medium text-slate-700 truncate">{order.dealer?.dealerName || '—'}</p>
-        <p className="text-[10px] text-slate-400 truncate">{order.salesperson?.fullName || '—'}</p>
+        <p className="text-[10px] text-slate-400 truncate">{getOrderSalesperson(order)}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -345,7 +354,7 @@ function ReviewModal({ order, onClose, onSave, moving }) {
             <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
               <div><span className="font-medium">Date:</span> {formatDate(order.date)}</div>
               <div><span className="font-medium">Dealer:</span> {order.dealer?.dealerName || '—'}</div>
-              <div><span className="font-medium">Salesperson:</span> {order.salesperson?.fullName || '—'}</div>
+              <div><span className="font-medium">Salesperson:</span> {getOrderSalesperson(order)}</div>
               <div><span className="font-medium">Amount:</span> {formatCurrency(order.grandTotal || 0)}</div>
             </div>
             <div className="text-xs text-slate-600">

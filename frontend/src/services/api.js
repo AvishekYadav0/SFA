@@ -1,27 +1,12 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || '/api';
+const baseURL = import.meta.env.PROD ? 'https://test.alvn.cc/api' : '/api';
 
 const api = axios.create({ baseURL });
-
-/* strip NaN/Infinity from any payload before it hits JSON.stringify */
-const sanitize = (obj) => {
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  if (obj !== null && typeof obj === 'object') {
-    return Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [k, sanitize(v)])
-    );
-  }
-  if (typeof obj === 'number' && !Number.isFinite(obj)) return 0;
-  return obj;
-};
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  if (config.data && typeof config.data === 'object') {
-    config.data = sanitize(config.data);
-  }
   return config;
 });
 
@@ -37,3 +22,31 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+const crud = (path) => ({
+  getAll:  (params) => api.get(path, { params }),
+  getOne:  (id)     => api.get(`${path}/${id}`),
+  create:  (data)   => api.post(path, data),
+  update:  (id, data) => api.put(`${path}/${id}`, data),
+  remove:  (id)     => api.delete(`${path}/${id}`),
+});
+
+export const authService = {
+  login:          (data) => api.post('/auth/login', data),
+  getMe:          ()     => api.get('/auth/me'),
+  changePassword: (data) => api.put('/auth/change-password', data),
+};
+
+export const userService       = { ...crud('/users'), getSubordinates: () => api.get('/users/subordinates') };
+export const dealerService     = crud('/dealers');
+export const productService    = crud('/products');
+export const orderService      = { ...crud('/orders'), updateStatus: (id, data) => api.patch(`/orders/${id}/status`, data) };
+export const collectionService = crud('/collections');
+export const visitService      = crud('/visits');
+export const dashboardService  = { get: (params) => api.get('/dashboard', { params }) };
+export const reportService     = {
+  sales:       (params) => api.get('/reports/sales',       { params }),
+  collection:  (params) => api.get('/reports/collection',  { params }),
+  visit:       (params) => api.get('/reports/visit',       { params }),
+  outstanding: (params) => api.get('/reports/outstanding', { params }),
+};

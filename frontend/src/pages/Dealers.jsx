@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import {
-  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink
+  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink, FiUserPlus
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -30,6 +30,30 @@ const PROVINCE_COLORS = [
   { bg: 'bg-red-50 dark:bg-red-900/20',       border: 'border-red-200 dark:border-red-700',       icon: 'bg-red-500',     text: 'text-red-700 dark:text-red-300'     },
 ];
 
+const getDealerStaff = (dealer) => {
+  const roles = [
+    ['so', 'SO'], ['se', 'SE'], ['asm', 'ASM'], ['rsm', 'RSM'], ['nsm', 'NSM'],
+  ];
+  for (const [field, role] of roles) {
+    const value = Array.isArray(dealer?.[field]) ? dealer[field][0] : dealer?.[field];
+    if (value) return { name: value.name || value.fullName || '', role };
+  }
+  return null;
+};
+
+const getDealerTeam = (dealer) => {
+  const roles = [
+    ['so', 'SO'], ['se', 'SE'], ['asm', 'ASM'], ['rsm', 'RSM'], ['nsm', 'NSM'],
+  ];
+  return roles.flatMap(([field, role]) => {
+    const values = Array.isArray(dealer?.[field]) ? dealer[field] : [dealer?.[field]];
+    return values.filter(Boolean).map(value => ({
+      name: value.name || value.fullName || '',
+      role,
+    }));
+  });
+};
+
 export default function Dealers() {
   const [allData, setAllData]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
@@ -38,7 +62,9 @@ export default function Dealers() {
   const [confirm, setConfirm]                   = useState({ open: false, id: null });
   const [deleting, setDeleting]                 = useState(false);
   const [linkModal, setLinkModal]               = useState({ open: false, dealer: null });
+  const [soModal, setSoModal]                   = useState({ open: false, dealer: null });
   const [allUsers, setAllUsers]                 = useState([]);
+  const [allSOs, setAllSOs]                     = useState([]);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
@@ -68,6 +94,24 @@ export default function Dealers() {
       setAllUsers(res.data.data || []);
     } catch { setAllUsers([]); }
     setLinkModal({ open: true, dealer });
+  };
+
+  const openSOModal = async (dealer) => {
+    try {
+      const res = await userService.getAll({ limit: 1000 });
+      setAllSOs((res.data.data || []).filter(user => ['so', 'se', 'asm', 'rsm', 'nsm'].includes(user.role)));
+    } catch { setAllSOs([]); }
+    setSoModal({ open: true, dealer });
+  };
+
+  const handleAssignSO = async (staffIds) => {
+    try {
+      const assignments = allSOs.filter(staff => staffIds.includes(staff._id)).map(staff => ({ id: staff._id, role: staff.role }));
+      await dealerService.assignSO(soModal.dealer._id, assignments);
+      toast.success('Sales team assigned!');
+      setSoModal({ open: false, dealer: null });
+      fetchAll();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed to assign SO'); }
   };
 
   const handleLinkUser = async (userId) => {
@@ -156,8 +200,8 @@ export default function Dealers() {
                     <th>Dealer Name</th>
                     <th>Owner</th>
                     <th>Phone</th>
-                    <th>Area</th>
                     <th>PAN</th>
+                    <th>NID</th>
                     <th>Credit Limit</th>
                     <th>Opening Bal.</th>
                     <th>Status</th>
@@ -172,18 +216,34 @@ export default function Dealers() {
                           <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
                             <FiShoppingBag className="text-white text-xs" />
                           </div>
-                          <span className="font-medium">{d.dealerName}</span>
+                          <div className="min-w-0">
+                            <span className="font-medium block">{d.dealerName}</span>
+                            {getDealerTeam(d).length > 0 && (
+                              <span className="text-[10px] text-primary-600 block mt-0.5">
+                                {getDealerTeam(d).map((staff, index) => (
+                                  <span key={`${staff.role}-${staff.name}`}>
+                                    {index > 0 ? ' · ' : '👤 '}{staff.name} ({staff.role})
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td>{d.ownerName}</td>
                       <td>{d.phone}</td>
-                      <td>{d.area}</td>
                       <td className="text-slate-500">{d.panNumber || '—'}</td>
+                      <td className="text-slate-500">{d.nidNumber || '—'}</td>
                       <td>{formatCurrency(d.creditLimit)}</td>
                       <td>{formatCurrency(d.openingBalance)}</td>
                       <td><StatusBadge status={d.status} /></td>
                       <td>
                         <div className="flex gap-1.5">
+                          <button onClick={() => openSOModal(d)}
+                            title="Assign Sales Officers"
+                            className="p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg text-yellow-600 transition-colors">
+                            <FiUserPlus size={14} />
+                          </button>
                           <button onClick={() => openLinkModal(d)}
                             title={d.linkedUser ? 'Change linked user' : 'Link user account'}
                             className={`p-1.5 rounded-lg transition-colors ${d.linkedUser ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
@@ -210,6 +270,11 @@ export default function Dealers() {
         <DealerModal
           modal={modal} onClose={() => setModal({ open: false, data: null, province: '' })}
           onSubmit={handleSubmit(onSubmit)} register={register} errors={errors} isSubmitting={isSubmitting}
+        />
+        <AssignSOModal
+          modal={soModal} sos={allSOs}
+          onClose={() => setSoModal({ open: false, dealer: null })}
+          onAssign={handleAssignSO}
         />
         <LinkUserModal
           modal={linkModal}
@@ -296,6 +361,87 @@ export default function Dealers() {
   );
 }
 
+function AssignSOModal({ modal, sos, onClose, onAssign }) {
+  const [selected, setSelected] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (modal.open) {
+      const existing = ['so', 'se', 'asm', 'rsm', 'nsm'].flatMap(role => {
+        const value = modal.dealer?.[role];
+        const values = Array.isArray(value) ? value : [value];
+        return values.filter(Boolean).map(staff => staff._id || staff);
+      });
+      setSelected(existing);
+    }
+  }, [modal]);
+
+  const toggle = (id) => setSelected(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+  );
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    await onAssign(selected);
+    setSaving(false);
+  };
+
+  return (
+    <Modal open={modal.open} onClose={onClose} title="Assign Sales Team" size="sm">
+      <p className="text-sm text-slate-500 mb-4">
+        Select a salesperson for <strong>{modal.dealer?.dealerName}</strong>. The selected person will auto-fill in Orders and Sales.
+      </p>
+      {getDealerTeam(modal.dealer).length > 0 && (
+        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">Current dealer team</p>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {getDealerTeam(modal.dealer).map(staff => (
+              <span key={`${staff.role}-${staff.name}`} className="text-xs font-medium text-slate-700">
+                👤 {staff.name} <span className="text-blue-600">({staff.role})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+          {sos.length === 0 ? (
+            <p className="text-xs text-amber-600 text-center py-4">No sales team members found. Create staff in Team Management first.</p>
+          ) : sos.map(so => (
+            <label key={so._id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selected.includes(so._id)}
+                onChange={() => toggle(so._id)}
+                className="w-4 h-4 accent-yellow-500"
+              />
+              <div>
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{so.name} <span className="text-primary-600">({so.role.toUpperCase()})</span></p>
+                <p className="text-xs text-slate-400">{so.employeeId || so.email}</p>
+                {so.reportsTo?.name && (
+                  <p className="text-[10px] text-primary-600 mt-0.5">SE: {so.reportsTo.name}</p>
+                )}
+                {(so.asm?.name || so.rsm?.name || so.nsm?.name) && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {[so.asm?.name && `ASM: ${so.asm.name}`, so.rsm?.name && `RSM: ${so.rsm.name}`, so.nsm?.name && `NSM: ${so.nsm.name}`].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? 'Saving...' : `Assign (${selected.length})`}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function LinkUserModal({ modal, users, onClose, onLink }) {
   const [selected, setSelected] = useState('');
   const [linking, setLinking] = useState(false);
@@ -371,8 +517,8 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
             <input {...register('panNumber')} className="input" placeholder="e.g. 123456789" />
           </div>
           <div>
-            <label className="label">VAT Number</label>
-            <input {...register('vatNumber')} className="input" placeholder="e.g. 300123456" />
+            <label className="label">NID Number</label>
+            <input {...register('nidNumber')} className="input" placeholder="e.g. 12345678" />
           </div>
         </div>
 
@@ -391,16 +537,9 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Area *</label>
-            <input {...register('area', { required: 'Required' })} className="input" placeholder="e.g. New Road" />
-            {errors.area && <p className="text-red-500 text-xs mt-1">{errors.area.message}</p>}
-          </div>
-          <div>
-            <label className="label">Address</label>
-            <input {...register('address')} className="input" placeholder="e.g. New Road, Kathmandu" />
-          </div>
+        <div>
+          <label className="label">Address</label>
+          <input {...register('address')} className="input" placeholder="e.g. New Road, Kathmandu" />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
