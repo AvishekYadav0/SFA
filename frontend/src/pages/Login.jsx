@@ -12,7 +12,7 @@ import { Spinner } from '../components/common/Spinner';
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const [role, setRole] = useState('se');
+  const [role, setRole] = useState('admin');
   const [showPass, setShowPass] = useState(false);
   const [adminExists, setAdminExists] = useState(true);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
@@ -56,14 +56,10 @@ export default function Login() {
           {/* Role Selector */}
           <div className="mb-6">
             <p className="text-sm font-medium text-blue-100 mb-3">I am signing in as</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'admin', label: 'Admin', icon: FiShield },
-                { value: 'nsm', label: 'NSM', icon: FiShield },
-                { value: 'rsm', label: 'RSM', icon: FiUsers },
-                { value: 'asm', label: 'ASM', icon: FiUsers },
-                { value: 'se', label: 'SE', icon: FiUser },
-                { value: 'dealer', label: 'Dealer', icon: FiUser },
+                { value: 'staff', label: 'Staff', icon: FiUsers },
               ].map(({ value, label, icon: Icon }) => (
                 <label key={value}
                   className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${
@@ -153,7 +149,7 @@ export default function Login() {
           </form>
 
           {/* Staff note */}
-          {['se', 'dealer'].includes(role) && (
+          {role === 'staff' && (
             <p className="text-center text-blue-300 text-xs mt-4">
               Don't have an account? Ask your Admin to create one for you.
             </p>
