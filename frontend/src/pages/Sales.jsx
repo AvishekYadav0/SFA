@@ -497,7 +497,7 @@ const SalesTrendChart = ({ province, range, from, to }) => {
 
 /* ── Orders Table ────────────────────────────────────── */
 const OrdersTable = ({ province, range, from, to }) => {
-  const [orders, setOrders] = useState([]);
+  const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -510,30 +510,30 @@ const OrdersTable = ({ province, range, from, to }) => {
       if (province) params.province = province;
       if (from) params.from = from;
       if (to) params.to = to;
-      const res = await api.get('/orders', { params });
-      setOrders(res.data.data || []);
+      const res = await api.get('/sales/records', { params });
+      setSales(res.data.data || []);
       setPages(res.data.pages || 1);
       setTotal(res.data.total || 0);
       setPage(p);
-    } catch { setOrders([]); }
+    } catch { setSales([]); }
     finally { setLoading(false); }
   }, [province, range, from, to]);
 
   useEffect(() => { load(1); }, [load]);
 
   if (loading) return <PageLoader />;
-  if (!orders.length) return (
-    <div className="text-center py-10 text-slate-400 text-sm">No orders found.</div>
+  if (!sales.length) return (
+    <div className="text-center py-10 text-slate-400 text-sm">No sales found.</div>
   );
 
   return (
     <div>
-      <p className="text-xs text-slate-500 mb-2">{total} orders</p>
+      <p className="text-xs text-slate-500 mb-2">{total} sales</p>
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="w-full text-sm">
           <thead style={{ background: '#1e3a8a', color: '#fff' }}>
             <tr>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold">Order #</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold">Sale / Order #</th>
               <th className="px-3 py-2.5 text-left text-xs font-semibold">Date</th>
               <th className="px-3 py-2.5 text-left text-xs font-semibold">Dealer</th>
               <th className="px-3 py-2.5 text-left text-xs font-semibold">Salesperson</th>
@@ -544,17 +544,17 @@ const OrdersTable = ({ province, range, from, to }) => {
             </tr>
           </thead>
           <tbody>
-            {orders.map((o, i) => {
+            {sales.map((o, i) => {
               const c = PAYMENT_COLORS[o.paymentType] || { bg: '#f8fafc', text: '#475569', label: o.paymentType };
               return (
                 <tr key={o._id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}
                   className="border-b border-slate-100">
-                  <td className="px-3 py-2.5 font-bold text-primary-600 text-xs">{o.orderNumber}</td>
+                  <td className="px-3 py-2.5 font-bold text-primary-600 text-xs">{o.orderNumber || o.invoiceNumber || o.manualSaleId || '—'}</td>
                   <td className="px-3 py-2.5 text-xs text-slate-500">{formatDate(o.date || o.createdAt)}</td>
                   <td className="px-3 py-2.5 text-xs font-medium text-slate-700">{o.dealer?.dealerName}</td>
                   <td className="px-3 py-2.5 text-xs text-slate-600">
-                    {(o.so || o.se || o.asm || o.rsm || o.nsm)
-                      ? `${(o.so || o.se || o.asm || o.rsm || o.nsm).name} (${(o.so && 'SO') || (o.se && 'SE') || (o.asm && 'ASM') || (o.rsm && 'RSM') || 'NSM'})`
+                    {o.salesperson
+                      ? `${o.salesperson.fullName || o.salesperson.name} (${(o.salesperson.role || '').toUpperCase()})`
                       : (o.staffId?.name || '—')}
                   </td>
                   <td className="px-3 py-2.5 text-xs">
@@ -610,6 +610,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const view = selectedProvince ? 'detail' : 'overview';
   const [staffModal, setStaffModal] = useState(null); // province name or null
+  const [ordersKey, setOrdersKey] = useState(0);
   const [salespersons, setSalespersons] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -982,6 +983,7 @@ export default function Sales() {
       });
       fetchStats();
       loadEligibleOrders();
+      setOrdersKey(k => k + 1);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save sale.');
     } finally {
@@ -1306,9 +1308,9 @@ export default function Sales() {
       {/* all orders table */}
       <div className="card p-4">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-          All Orders
+          All Sales
         </h3>
-        <OrdersTable province={null} range={range} from={from} to={to} />
+        <OrdersTable key={ordersKey} province={null} range={range} from={from} to={to} />
       </div>
 
       {/* staff modal */}

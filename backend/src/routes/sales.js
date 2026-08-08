@@ -357,10 +357,57 @@ router.post('/manual', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'salesperson, dealer, province, and area are required' });
     }
 
-    const normalizedItems = normalizeSaleItems(items);
-    const computedGrandTotal = normalizedItems.reduce((s, i) => s + (i.grandTotal || 0), 0);
-    const finalGrandTotal = grandTotal ?? computedGrandTotal;
+    // Build order items with correct amounts (fixed excise/vat × qty)
+    const orderItems = (items || []).filter(it => it.product).map(it => {
+      const qty = Number(it.quantity) || 0;
+      const rate = Number(it.rate) || 0;
+      const basic = qty * rate;
+      const excise = (Number(it.exciseAmount) || 0) * qty;
+      const vat = (Number(it.vatAmount) || 0) * qty;
+      return {
+        product: it.product,
+        productName: it.productName,
+        customerType: it.customerType || 'MM',
+        ml: it.ml,
+        up: it.up,
+        quantity: qty,
+        rate,
+        basicAmount: basic,
+        exciseAmount: excise,
+        vatAmount: vat,
+        grandTotal: basic + excise + vat,
+      };
+    });
 
+    const computedGrandTotal = orderItems.reduce((s, i) => s + (i.grandTotal || 0), 0);
+    const finalGrandTotal = Number(grandTotal) || computedGrandTotal;
+    const finalCollected = collectedAmount !== undefined && collectedAmount !== '' ? Number(collectedAmount) : finalGrandTotal;
+
+    // Resolve salesperson to hierarchy field
+    const User = require('../models/User');
+    const sp = await User.findById(salesperson).lean();
+    const hierarchyField = sp ? (sp.role === 'so' ? 'so' : sp.role === 'se' ? 'se' : sp.role === 'asm' ? 'asm' : sp.role === 'rsm' ? 'rsm' : sp.role === 'nsm' ? 'nsm' : 'se') : 'se';
+
+    // Create Order record so it appears in All Orders table
+    const newOrder = await Order.create({
+      [hierarchyField]: salesperson,
+      dealer,
+      date: date ? new Date(date) : new Date(),
+      province,
+      area,
+      items: orderItems,
+      totalBasicAmount: orderItems.reduce((s, i) => s + (i.basicAmount || 0), 0),
+      totalExciseAmount: orderItems.reduce((s, i) => s + (i.exciseAmount || 0), 0),
+      totalVatAmount: orderItems.reduce((s, i) => s + (i.vatAmount || 0), 0),
+      grandTotal: finalGrandTotal,
+      collectedAmount: finalCollected,
+      paymentType: paymentType || 'cash',
+      status: 'completed',
+      remarks,
+      createdBy: req.user._id,
+    });
+
+    const normalizedItems = normalizeSaleItems(items);
     const saleData = {
       manualSaleId:   `MSALE-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       salesperson,
@@ -370,28 +417,20 @@ router.post('/manual', protect, async (req, res) => {
       area,
       items: normalizedItems,
       grandTotal: finalGrandTotal,
-      collectedAmount: collectedAmount ?? finalGrandTotal,
+      collectedAmount: finalCollected,
       paymentType:    paymentType || 'cash',
       status,
       staffId:        req.user._id,
       createdBy:      req.user._id,
       remarks,
       invoiceNumber: buildInvoiceNumber(),
+      order: newOrder._id,
+      orderNumber: newOrder.orderNumber,
     };
-
-    if (orderNumber) {
-      saleData.orderNumber = orderNumber;
-    }
-
-    // Only assign a real order reference when provided.
-    // This ensures manual sales do not store order: null or order: ''.
-    if (order && order !== 'null') {
-      saleData.order = order;
-    }
 
     const sale = await Sale.create(saleData);
 
-    return res.status(201).json({ success: true, data: sale });
+    return res.status(201).json({ success: true, data: sale, order: newOrder });
   } catch (err) {
     console.error('manual sale failed:', err);
     return res.status(400).json({ success: false, message: err.message });
@@ -594,11 +633,14 @@ router.get('/staff-by-province', protect, async (req, res) => {
  */
 router.get('/records', protect, async (req, res) => {
   try {
-    const { status, province, page = 1, limit = 20 } = req.query;
+    const { status, province, range = 'all', from, to, page = 1, limit = 20 } = req.query;
     const match = {};
     if (status)   match.status   = status;
     if (province) match.province = province;
     if (req.user.role === 'staff') match.staffId = req.user._id;
+
+    const dateFilter = buildDateFilter(range, from, to);
+    if (dateFilter) match.date = dateFilter;
 
     const total = await Sale.countDocuments(match);
     const data  = await Sale.find(match)
