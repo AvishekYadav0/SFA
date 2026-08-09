@@ -521,9 +521,10 @@ router.post('/from-order', protect, async (req, res) => {
 router.get('/orders', protect, async (req, res) => {
   try {
     const { province, range = 'all', from, to, page = 1, limit = 20 } = req.query;
-    const match = { status: { $in: SALE_STATUSES } };
+    const { scopeFilter } = require('../middleware/auth');
+    const scope = scopeFilter(req);
+    const match = { status: { $in: SALE_STATUSES }, ...scope };
     if (province) match.province = province;
-    if (req.user.role === 'staff') match.staffId = req.user._id;
 
     const dateFilter = buildDateFilter(range, from, to);
     if (dateFilter) match.createdAt = dateFilter;
@@ -622,18 +623,32 @@ router.get('/staff-by-province', protect, async (req, res) => {
 router.get('/records', protect, async (req, res) => {
   try {
     const { status, province, range = 'all', from, to, page = 1, limit = 20 } = req.query;
+    const { scopeFilter } = require('../middleware/auth');
+    const scope = scopeFilter(req);
+
     const match = {};
     if (status)   match.status   = status;
     if (province) match.province = province;
-    if (req.user.role === 'staff') match.staffId = req.user._id;
 
     const dateFilter = buildDateFilter(range, from, to);
     if (dateFilter) match.date = dateFilter;
 
+    // Scope: find orders matching this user's hierarchy, then filter sales by those orders
+    // For admin/nsm — no restriction
+    const isUnrestricted = ['admin', 'nsm'].includes(req.user.role);
+    if (!isUnrestricted && Object.keys(scope).length > 0) {
+      const scopedOrders = await Order.find(scope).select('_id').lean();
+      const orderIds = scopedOrders.map(o => o._id);
+      match.$or = [
+        { order: { $in: orderIds } },
+        { salesperson: req.user._id },
+      ];
+    }
+
     const total = await Sale.countDocuments(match);
     const data  = await Sale.find(match)
       .populate('order',       'orderNumber date grandTotal paymentType')
-        .populate('salesperson', 'name fullName role')
+      .populate('salesperson', 'name fullName role')
       .populate('dealer',      'dealerName area')
       .populate('staffId',     'name')
       .sort('-createdAt')
