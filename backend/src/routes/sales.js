@@ -56,13 +56,11 @@ function buildInvoiceNumber() {
 router.get('/by-province', protect, async (req, res) => {
   try {
     const { range = 'all', from, to } = req.query;
+    const { scopeFilter } = require('../middleware/auth');
+    const scope = scopeFilter(req);
 
-    const orderMatch = { status: { $in: SALE_STATUSES } };
-    const manualMatch = { status: { $in: SALE_STATUSES }, order: { $exists: false } };
-    if (req.user.role === 'staff') {
-      orderMatch.staffId = req.user._id;
-      manualMatch.staffId = req.user._id;
-    }
+    const orderMatch = { status: { $in: SALE_STATUSES }, ...scope };
+    const manualMatch = { status: { $in: SALE_STATUSES }, order: { $exists: false }, ...scope };
 
     const dateFilter = buildDateFilter(range, from, to);
     if (dateFilter) {
@@ -161,9 +159,9 @@ router.get('/by-province', protect, async (req, res) => {
     const manualMap = {};
     manualResults.forEach(item => { manualMap[item.province] = item; });
 
-    // Staff counts from User model (se/so/asm/rsm/nsm)
+    // Staff counts — scoped to logged-in user's hierarchy
     const staffCounts = await Order.aggregate([
-      { $match: { status: { $in: SALE_STATUSES } } },
+      { $match: { status: { $in: SALE_STATUSES }, ...scope } },
       {
         $group: {
           _id: '$province',
@@ -179,15 +177,6 @@ router.get('/by-province', protect, async (req, res) => {
         ...(s.staffIds || []), ...(s.soIds || []), ...(s.asmIds || [])
       ].filter(Boolean).map(String));
       staffCountMap[s._id] = ids.size;
-    });
-
-    // Also count all users with a province field
-    const userProvinceCounts = await User.aggregate([
-      { $match: { role: { $in: ['se','so','asm','rsm','nsm'] }, province: { $exists: true, $ne: null, $ne: '' } } },
-      { $group: { _id: '$province', count: { $sum: 1 } } },
-    ]);
-    userProvinceCounts.forEach(u => {
-      if (!staffCountMap[u._id]) staffCountMap[u._id] = u.count;
     });
 
     const provinces = NEPAL_PROVINCES.map(name => {
@@ -239,15 +228,14 @@ router.get('/by-province', protect, async (req, res) => {
 router.get('/trend', protect, async (req, res) => {
   try {
     const { province, range = 'month', groupBy = 'day' } = req.query;
-    const orderMatch = { status: { $in: SALE_STATUSES } };
-    const manualMatch = { status: { $in: SALE_STATUSES }, order: { $exists: false } };
+    const { scopeFilter } = require('../middleware/auth');
+    const scope = scopeFilter(req);
+
+    const orderMatch = { status: { $in: SALE_STATUSES }, ...scope };
+    const manualMatch = { status: { $in: SALE_STATUSES }, order: { $exists: false }, ...scope };
     if (province) {
       orderMatch.province = province;
       manualMatch.province = province;
-    }
-    if (req.user.role === 'staff') {
-      orderMatch.staffId = req.user._id;
-      manualMatch.staffId = req.user._id;
     }
 
     const dateFilter = buildDateFilter(range, req.query.from, req.query.to);
