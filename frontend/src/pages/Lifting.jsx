@@ -92,7 +92,7 @@ export default function Lifting() {
 
   useEffect(() => {
     crud.fetchAll({ page, limit: 10 });
-    orderService.getAll({ status: 'approved', limit: 200 }).then(r => setOrders(r.data.data || []));
+    orderService.getAll({ limit: 200 }).then(r => setOrders(r.data.data || []));
     dealerService.getAll({ limit: 200 }).then(r => setDealers(r.data.data || []));
     productService.getAll({ limit: 200 }).then(r => setProducts(r.data.data || []));
   }, [page]);
@@ -178,7 +178,7 @@ export default function Lifting() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="label text-xs">Order * <span className="text-slate-400">(approved only)</span></label>
+              <label className="label text-xs">Order *</label>
               <select {...register('order', { required: 'Required' })}
                 onChange={e => handleOrderChange(e.target.value)}
                 className="input text-sm">
@@ -286,7 +286,7 @@ export default function Lifting() {
 
       <div className="card p-0">
         {crud.loading ? <PageLoader /> : crud.data.length === 0 ? (
-          <EmptyState icon={FiTruck} title="No lifting plans" description="Create a lifting plan linked to an approved order"
+          <EmptyState icon={FiTruck} title="No lifting plans" description="Create a lifting plan linked to an order"
             action={canManage && <button className="btn-primary" onClick={openCreate}><FiPlus />New Plan</button>} />
         ) : (
           <>
