@@ -309,6 +309,8 @@ export default function Orders() {
 
   const allOrders = crud.data || [];
 
+  const showAllProvinces = ['admin', 'nsm', 'rsm'].includes(user?.role);
+
   const provinceStats = PROVINCES.map(name => {
     const list = allOrders.filter(o => o.province === name);
     return {
@@ -317,7 +319,8 @@ export default function Orders() {
       total: list.reduce((s, o) => s + (o.grandTotal || 0), 0),
       pending: list.filter(o => o.status === 'pending').length,
     };
-  });
+  }).filter(p => showAllProvinces || p.count > 0);
+
   const unassigned = allOrders.filter(o => !PROVINCES.includes(o.province));
 
   const ordersInProvince = selectedProvince === '__all__'
