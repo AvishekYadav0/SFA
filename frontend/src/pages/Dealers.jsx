@@ -93,9 +93,11 @@ export default function Dealers() {
     ? PROVINCES
     : PROVINCES.filter(p => provinceCounts[p] > 0);
 
-  const provinceData = selectedProvince
-    ? allData.filter(d => d.province === selectedProvince)
-    : [];
+  const provinceData = selectedProvince === '__all__'
+    ? allData
+    : selectedProvince
+      ? allData.filter(d => d.province === selectedProvince)
+      : [];
 
   const openLinkModal = async (dealer) => {
     try {
@@ -167,8 +169,9 @@ export default function Dealers() {
 
   // ── Province drill-down view ──
   if (selectedProvince) {
+    const isAll = selectedProvince === '__all__';
     const colorIdx = PROVINCES.indexOf(selectedProvince);
-    const color = PROVINCE_COLORS[colorIdx];
+    const color = PROVINCE_COLORS[colorIdx] || PROVINCE_COLORS[0];
 
     return (
       <div className="space-y-6">
@@ -182,13 +185,13 @@ export default function Dealers() {
               <FiArrowLeft className="text-slate-600 dark:text-slate-300 text-xl" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedProvince}</h1>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{isAll ? 'All Dealers' : selectedProvince}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {provinceData.length} dealer{provinceData.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
-          <button className="btn-primary" onClick={() => openCreate(selectedProvince)}>
+          <button className="btn-primary" onClick={() => openCreate(isAll ? '' : selectedProvince)}>
             <FiPlus /> Add Dealer
           </button>
         </div>
@@ -198,7 +201,7 @@ export default function Dealers() {
           {provinceData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <FiShoppingBag className="text-5xl mb-3 opacity-30" />
-              <p className="font-medium text-slate-500">No dealers in {selectedProvince}</p>
+              <p className="font-medium text-slate-500">No dealers in {isAll ? 'any province' : selectedProvince}</p>
               <p className="text-sm mt-1">Click "Add Dealer" to add one</p>
             </div>
           ) : (
@@ -346,7 +349,10 @@ export default function Dealers() {
         })}
 
         {/* Total summary box */}
-        <div className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-5 text-left border-2 border-slate-700 dark:border-slate-600">
+        <button
+          onClick={() => setSelectedProvince('__all__')}
+          className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-5 text-left border-2 border-slate-700 dark:border-slate-600 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 group"
+        >
           <div className="flex items-start justify-between mb-4">
             <div className="w-12 h-12 bg-slate-600 rounded-xl flex items-center justify-center shadow-sm">
               <FiShoppingBag className="text-white text-xl" />
@@ -357,7 +363,10 @@ export default function Dealers() {
           <p className="text-slate-400 text-xs mt-1">
             {allData.filter(d => d.status === 'active').length} active total
           </p>
-        </div>
+          <p className="text-xs mt-3 font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity">
+            Click to view all →
+          </p>
+        </button>
       </div>
 
       <DealerModal
