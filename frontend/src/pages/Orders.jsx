@@ -696,7 +696,7 @@ export default function Orders() {
               </div>
               <span className="text-3xl font-bold text-white">{allOrders.length}</span>
             </div>
-            <p className="font-semibold text-base text-white">All Provinces</p>
+            <p className="font-semibold text-base text-white">All Orders</p>
             <p className="text-slate-400 text-xs mt-1">
               {formatCurrency(allOrders.reduce((s, o) => s + (o.grandTotal || 0), 0))} total
             </p>
@@ -711,7 +711,7 @@ export default function Orders() {
 
   /* ── PROVINCE DRILL-DOWN LIST VIEW ─────────────────────── */
   const provinceLabel = selectedProvince === '__all__'
-    ? 'All Provinces'
+    ? 'All Orders'
     : selectedProvince === '__unassigned__' ? 'Unspecified' : selectedProvince;
 
   return (
@@ -720,7 +720,7 @@ export default function Orders() {
         <div>
           <button onClick={backToProvinces}
             className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600 mb-1">
-            <FiArrowLeft size={12} /> All Provinces
+            <FiArrowLeft size={12} /> All Orders
           </button>
           <div className="flex items-center gap-2">
             <FiMapPin className="text-primary-600" size={18} />

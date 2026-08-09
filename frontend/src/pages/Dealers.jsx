@@ -353,7 +353,7 @@ export default function Dealers() {
             </div>
             <span className="text-3xl font-bold text-white">{allData.length}</span>
           </div>
-          <p className="font-semibold text-base text-white">All Provinces</p>
+          <p className="font-semibold text-base text-white">All Dealers</p>
           <p className="text-slate-400 text-xs mt-1">
             {allData.filter(d => d.status === 'active').length} active total
           </p>

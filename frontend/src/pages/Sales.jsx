@@ -365,7 +365,7 @@ const OverallPaymentBar = ({ breakdown }) => {
   return (
     <div className="card p-4">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-        💳 Payment Method Breakdown (All Provinces)
+        💳 Payment Method Breakdown (All Sales)
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {entries.map(([method, amount]) => {
@@ -450,7 +450,7 @@ const SalesTrendChart = ({ province, range, from, to }) => {
     <div className="card p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-          <FiBarChart2 size={13} /> Sales Trend{province ? ` — ${province}` : ' (All Provinces)'}
+          <FiBarChart2 size={13} /> Sales Trend{province ? ` — ${province}` : ' (All Sales)'}
         </p>
         <div className="flex gap-1 flex-wrap">
           {CHART_GROUP_OPTIONS.map(o => (
@@ -714,7 +714,7 @@ export default function Sales() {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <button onClick={backToOverview} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600">
-            <FiArrowLeft size={12} /> All Provinces
+            <FiArrowLeft size={12} /> All Sales
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -732,7 +732,7 @@ export default function Sales() {
         <div>
           <button onClick={backToOverview}
             className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600 mb-1">
-            <FiArrowLeft size={12} /> All Provinces
+            <FiArrowLeft size={12} /> All Sales
           </button>
           <div className="flex items-center gap-2">
             {selectedProvince && <FiMapPin style={{ color: c.border }} size={18} />}
