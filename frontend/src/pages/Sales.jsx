@@ -1289,7 +1289,9 @@ export default function Sales() {
             📍 Province-wise Sales Breakdown
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {provinces.map(stat => (
+            {provinces
+              .filter(stat => ['admin', 'nsm', 'rsm'].includes(user?.role) || stat.totalOrders > 0)
+              .map(stat => (
               <div key={stat.province} className="flex flex-col gap-2">
                 <ProvinceCard stat={stat} onClick={() => openProvince(stat.province)} />
                 <button

@@ -54,7 +54,10 @@ const getDealerTeam = (dealer) => {
   });
 };
 
+import { useAuth } from '../context/AuthContext';
+
 export default function Dealers() {
+  const { user } = useAuth();
   const [allData, setAllData]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
   const [selectedProvince, setSelectedProvince] = useState(null);
@@ -79,10 +82,16 @@ export default function Dealers() {
 
   useEffect(() => { fetchAll(); }, []);
 
+  const showAllProvinces = ['admin', 'nsm', 'rsm'].includes(user?.role);
+
   const provinceCounts = PROVINCES.reduce((acc, p) => {
     acc[p] = allData.filter(d => d.province === p).length;
     return acc;
   }, {});
+
+  const visibleProvinces = showAllProvinces
+    ? PROVINCES
+    : PROVINCES.filter(p => provinceCounts[p] > 0);
 
   const provinceData = selectedProvince
     ? allData.filter(d => d.province === selectedProvince)
@@ -305,9 +314,10 @@ export default function Dealers() {
         </button>
       </div>
 
-      {/* 7 Province Boxes */}
+      {/* Province Boxes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {PROVINCES.map((province, idx) => {
+        {visibleProvinces.map((province) => {
+          const idx = PROVINCES.indexOf(province);
           const color = PROVINCE_COLORS[idx];
           const count  = provinceCounts[province] || 0;
           const active = allData.filter(d => d.province === province && d.status === 'active').length;
