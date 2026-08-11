@@ -115,6 +115,19 @@ const calcRow = (qty, rate, excAmt, vatAmt) => {
   return { basic, excise, vat, total: basic + excise + vat };
 };
 
+const addCreditDays = (date, days) => {
+  if (!date) return '';
+  const [year, month, day] = date.split('-').map(Number);
+  const result = new Date(year, month - 1, day);
+  result.setDate(result.getDate() + (Number(days) || 0));
+  return [result.getFullYear(), String(result.getMonth() + 1).padStart(2, '0'), String(result.getDate()).padStart(2, '0')].join('-');
+};
+
+const localDateString = () => {
+  const date = new Date();
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+};
+
 const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
   const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
   const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
@@ -613,20 +626,25 @@ export default function Sales() {
   const [ordersKey, setOrdersKey] = useState(0);
   const [salespersons, setSalespersons] = useState([]);
   const [dealers, setDealers] = useState([]);
+  const [selectedDealerRecord, setSelectedDealerRecord] = useState(null);
   const [products, setProducts] = useState([]);
   const [assignedSalespersonId, setAssignedSalespersonId] = useState('');
   const [assignedSalespersonLabel, setAssignedSalespersonLabel] = useState('');
   const [assignedSalespersonRole, setAssignedSalespersonRole] = useState('');
   const [manualSale, setManualSale] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: localDateString(),
     salesperson: '',
     dealer: '',
     province: '',
     area: '',
+    dueDate: '',
     items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
-    grandTotal: '',
-    collectedAmount: '',
+    grandTotal: 0,
+    collectedAmount: 0,
     paymentType: 'cash',
+    paymentMode: 'cash',
+    referenceNo: '',
+    collectionDate: localDateString(),
     status: 'completed',
     remarks: '',
   });
@@ -799,19 +817,33 @@ export default function Sales() {
   /* ── OVERVIEW (all provinces) ────────────────────────── */
   const handleManualInput = (field, value) => {
     if (field === 'salesperson' && user?.role !== 'admin') return;
-    setManualSale(prev => ({ ...prev, [field]: value }));
+    setManualSale(prev => ({
+      ...prev,
+      [field]: value,
+      ...(field === 'date' && manualSale.dealer
+        ? { dueDate: addCreditDays(value, selectedDealerRecord?.creditDays ?? dealers.find(d => d._id === manualSale.dealer)?.creditDays) }
+        : {}),
+    }));
   };
 
-  const handleDealerChange = (dealerId) => {
-    const dealer = dealers.find(d => d._id === dealerId);
+  const handleDealerChange = async (dealerId) => {
+    let dealer = dealers.find(d => d._id === dealerId);
+    if (dealerId) {
+      try {
+        const response = await dealerService.getOne(dealerId);
+        dealer = response.data.data || dealer;
+      } catch { /* use the already loaded dealer summary */ }
+    }
     if (!dealer) {
-      setManualSale(prev => ({ ...prev, dealer: dealerId, province: '', area: '', salesperson: '' }));
+      setSelectedDealerRecord(null);
+      setManualSale(prev => ({ ...prev, dealer: dealerId, province: '', area: '', salesperson: '', dueDate: '' }));
       setDealerWarning('');
       setAssignedSalespersonId('');
       setAssignedSalespersonLabel('');
       setAssignedSalespersonRole('');
       return;
     }
+    setSelectedDealerRecord(dealer);
     const assignment = getDealerAssignedSalesperson(dealer);
     const baseLabel = assignment.label || salespersons.find(sp => String(sp._id) === String(assignment.id))?.fullName || salespersons.find(sp => String(sp._id) === String(assignment.id))?.name || '';
     const label = baseLabel ? `${baseLabel}(${assignment.role})` : `Assigned ${assignment.role}`;
@@ -821,6 +853,7 @@ export default function Sales() {
       province: dealer.province || '',
       area: dealer.address || dealer.area || '',
       salesperson: assignment.id,
+      dueDate: addCreditDays(prev.date, dealer.creditDays),
     }));
     setDealerWarning(assignment.id ? '' : 'No assigned employee found for the selected dealer.');
     setAssignedSalespersonId(String(assignment.id || ''));
@@ -877,15 +910,19 @@ export default function Sales() {
     }));
     setManualSale({
       order: order._id,
-      date: new Date(order.date || Date.now()).toISOString().split('T')[0],
+      date: order.date ? String(order.date).slice(0, 10) : localDateString(),
       salesperson: order.salesperson?._id || order.salesperson || '',
       dealer: order.dealer?._id || order.dealer || '',
       province: order.province || '',
       area: order.area || order.dealer?.address || order.dealer?.area || '',
+      dueDate: '',
       items: initialItems.length ? initialItems : [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
       grandTotal: order.grandTotal || '',
-      collectedAmount: order.collectedAmount || '',
+      collectedAmount: order.collectedAmount || 0,
       paymentType: order.paymentMethod || 'cash',
+      paymentMode: 'cash',
+      referenceNo: '',
+      collectionDate: localDateString(),
       status: 'completed',
       remarks: order.remarks || '',
     });
@@ -897,15 +934,19 @@ export default function Sales() {
     setManualSale({
       order: null,
       orderNumber: '',
-      date: new Date().toISOString().split('T')[0],
+      date: localDateString(),
       salesperson: '',
       dealer: '',
       province: '',
       area: '',
+      dueDate: '',
       items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
       grandTotal: '',
-      collectedAmount: '',
+      collectedAmount: 0,
       paymentType: 'cash',
+      paymentMode: 'cash',
+      referenceNo: '',
+      collectionDate: localDateString(),
       status: 'completed',
       remarks: '',
     });
@@ -927,9 +968,16 @@ export default function Sales() {
   useEffect(() => { loadEligibleOrders(); }, [loadEligibleOrders]);
 
   const submitManualSale = async () => {
-    const gt = Number(manualSale.grandTotal) || computeGrandTotal();
+    const gt = computeGrandTotal();
+    const dealer = dealers.find(item => item._id === manualSale.dealer);
+    const collected = Math.max(0, Number(manualSale.collectedAmount) || 0);
+    const projectedOutstanding = Number(dealer?.outstandingAmount || 0) + Math.max(0, gt - collected);
     if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !gt) {
-      toast.error('Fill dealer, salesperson, amount, province and area before saving.');
+      toast.error('Fill dealer, salesperson, province, address, and at least one priced item before saving.');
+      return;
+    }
+    if (dealer?.creditStatus === 'allowed' && projectedOutstanding > Number(dealer.creditLimit || 0)) {
+      toast.error('Sale exceeds the dealer credit limit. Reduce the sale or collection amount.');
       return;
     }
     setSavingSale(true);
@@ -953,10 +1001,11 @@ export default function Sales() {
       const payload = {
         ...manualSale,
         items,
-        grandTotal: Number(manualSale.grandTotal) || items.reduce((s, i) => s + (i.grandTotal || 0), 0),
-        collectedAmount: manualSale.collectedAmount
-          ? Number(manualSale.collectedAmount)
-          : (Number(manualSale.grandTotal) || items.reduce((s, i) => s + (i.grandTotal || 0), 0)),
+        grandTotal: gt,
+        collectedAmount: collected,
+        paymentType: manualSale.paymentType,
+        collectionDate: manualSale.collectionDate,
+        referenceNo: manualSale.referenceNo,
       };
 
       const endpoint = selectedOrder ? '/sales/from-order' : '/sales/manual';
@@ -969,15 +1018,19 @@ export default function Sales() {
       setEntryMode('choice');
       setSelectedOrder(null);
       setManualSale({
-        date: new Date().toISOString().split('T')[0],
+        date: localDateString(),
         salesperson: '',
         dealer: '',
         province: '',
         area: '',
+        dueDate: '',
         items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
         grandTotal: '',
-        collectedAmount: '',
+        collectedAmount: 0,
         paymentType: 'cash',
+        paymentMode: 'cash',
+        referenceNo: '',
+        collectionDate: localDateString(),
         status: 'completed',
         remarks: '',
       });
@@ -990,6 +1043,15 @@ export default function Sales() {
       setSavingSale(false);
     }
   };
+
+  const selectedDealer = selectedDealerRecord || dealers.find(item => item._id === manualSale.dealer);
+  const saleTotal = computeGrandTotal();
+  const collectionReceived = Math.max(0, Number(manualSale.collectedAmount) || 0);
+  const currentOutstanding = Number(selectedDealer?.outstandingAmount || 0);
+  const projectedOutstanding = currentOutstanding + Math.max(0, saleTotal - collectionReceived);
+  const creditLimit = Number(selectedDealer?.creditLimit || 0);
+  const availableCreditAfterSale = creditLimit - projectedOutstanding;
+  const outstandingAfterCollection = Math.max(0, saleTotal - collectionReceived);
 
   return (
     <div className="space-y-4">
@@ -1140,16 +1202,6 @@ export default function Sales() {
               <input value={manualSale.area} readOnly className="input mt-1 w-full text-xs bg-slate-50" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Sale Amount</label>
-              <input value={manualSale.grandTotal} onChange={e => handleManualInput('grandTotal', e.target.value)}
-                type="number" min="0" step="0.01" className="input mt-1 w-full text-xs" placeholder="0.00" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-600">Collected Amount</label>
-              <input value={manualSale.collectedAmount} onChange={e => handleManualInput('collectedAmount', e.target.value)}
-                type="number" min="0" step="0.01" className="input mt-1 w-full text-xs" placeholder="Leave blank = full amount" />
-            </div>
-            <div>
               <label className="text-xs font-medium text-slate-600">Payment Type</label>
               <select value={manualSale.paymentType} onChange={e => handleManualInput('paymentType', e.target.value)}
                 className="input mt-1 w-full text-xs">
@@ -1169,16 +1221,47 @@ export default function Sales() {
             </div>
           </div>
 
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-3 mt-3">
             <div>
-              <label className="text-xs font-medium text-slate-600">Date</label>
+              <label className="text-xs font-medium text-slate-600">Sale Date</label>
               <input type="date" value={manualSale.date} onChange={e => handleManualInput('date', e.target.value)}
                 className="input mt-1 w-full text-xs" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Due Date</label>
+              <input type="date" value={manualSale.dueDate || addCreditDays(manualSale.date, selectedDealer?.creditDays)} readOnly
+                className="input mt-1 w-full text-xs bg-slate-50" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">Remarks</label>
               <input type="text" value={manualSale.remarks} onChange={e => handleManualInput('remarks', e.target.value)}
                 className="input mt-1 w-full text-xs" placeholder="Optional remarks..." />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Dealer Credit Information</h3>
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+              {[
+                ['Dealer Code', selectedDealer?.dealerCode || '—'],
+                ['Distributor', selectedDealer?.distributor || '—'],
+                ['Province', selectedDealer?.province || '—'],
+                ['District', selectedDealer?.district || '—'],
+                ['Address', selectedDealer?.address || selectedDealer?.area || '—'],
+                ['Phone', selectedDealer?.phone || '—'],
+                ['Credit Limit', formatCurrency(creditLimit)],
+                ['Current Outstanding', formatCurrency(currentOutstanding)],
+                ['Available Credit', formatCurrency(creditLimit - currentOutstanding)],
+                ['Credit Days', selectedDealer?.creditDays || 0],
+                ['Collection Due Today', formatCurrency(selectedDealer?.dueAmount || 0)],
+                ['Overdue Amount', formatCurrency(selectedDealer?.overdueAmount || 0)],
+                ['Credit Status', selectedDealer?.creditStatus === 'blocked' ? 'Blocked' : 'Allowed'],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5 truncate">{value}</p>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1236,6 +1319,47 @@ export default function Sales() {
                   <SalesTotalsRow items={manualSale.items || []} />
                 </tfoot>
               </table>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h3 className="text-sm font-semibold text-blue-900 mb-3">Credit Check</h3>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <span>Current Outstanding</span><strong className="text-right">{formatCurrency(currentOutstanding)}</strong>
+                <span>Sale Total</span><strong className="text-right">{formatCurrency(saleTotal)}</strong>
+                <span>Projected Outstanding</span><strong className="text-right">{formatCurrency(projectedOutstanding)}</strong>
+                <span>Credit Limit</span><strong className="text-right">{formatCurrency(creditLimit)}</strong>
+                <span>Available Credit After Sale</span><strong className={`text-right ${availableCreditAfterSale < 0 ? 'text-red-600' : 'text-green-700'}`}>{formatCurrency(availableCreditAfterSale)}</strong>
+              </div>
+              {selectedDealer && availableCreditAfterSale < 0 && (
+                <p className="mt-3 text-xs font-semibold text-red-600">Credit limit exceeded. This sale cannot be submitted.</p>
+              )}
+            </div>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+              <h3 className="text-sm font-semibold text-green-900 mb-3">Collection</h3>
+              <div className="grid gap-3 grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Collection Received</label>
+                  <input value={manualSale.collectedAmount} onChange={e => handleManualInput('collectedAmount', e.target.value)} type="number" min="0" step="0.01" className="input mt-1 w-full text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Payment Mode</label>
+                  <select value={manualSale.paymentMode} onChange={e => handleManualInput('paymentMode', e.target.value)} className="input mt-1 w-full text-xs">
+                    <option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online</option><option value="cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Reference No.</label>
+                  <input value={manualSale.referenceNo} onChange={e => handleManualInput('referenceNo', e.target.value)} className="input mt-1 w-full text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Collection Date</label>
+                  <input type="date" value={manualSale.collectionDate} onChange={e => handleManualInput('collectionDate', e.target.value)} className="input mt-1 w-full text-xs" />
+                </div>
+              </div>
+              <p className="text-xs font-semibold text-green-800 mt-3">Outstanding After Collection: {formatCurrency(outstandingAfterCollection)}</p>
+              <p className="text-xs font-semibold text-green-800">Available Credit: {formatCurrency(creditLimit - currentOutstanding - outstandingAfterCollection)}</p>
             </div>
           </div>
 

@@ -4,7 +4,7 @@ import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiDollarSign, FiBarChart2, FiUser, FiSettings, FiLogOut,
   FiX, FiTrendingUp, FiMapPin, FiBell, FiTarget,
-  FiTruck, FiGitMerge, FiShoppingCart, FiHome
+  FiTruck, FiGitMerge, FiShoppingCart, FiHome, FiCalendar
 } from 'react-icons/fi';
 
 const NAV = [
@@ -16,7 +16,8 @@ const NAV = [
   { to: '/orders',       icon: FiClipboard,   label: 'Orders',          roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/pipeline',     icon: FiGitMerge,    label: 'Pipeline',        roles: ['nsm','rsm','asm','admin'] },
   { to: '/sales',        icon: FiShoppingCart,label: 'Sales',           roles: ['nsm','rsm','asm','se','so','admin'] },
-  { to: '/collections',  icon: FiDollarSign,  label: 'Collections',     roles: ['nsm','rsm','asm','se','so','admin'] },
+  { to: '/collections',  icon: FiDollarSign,  label: 'Collections',    roles: ['nsm','rsm','asm','se','so','admin'] },
+  { to: '/collection-plans', icon: FiCalendar,  label: 'Collection Plans', roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/visits',       icon: FiMapPin,      label: 'Visits',          roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/targets',      icon: FiTarget,      label: 'Targets',         roles: ['nsm','rsm','asm','se','admin'] },
   { to: '/reports',      icon: FiBarChart2,   label: 'Reports',         roles: ['nsm','rsm','asm','se','admin'] },

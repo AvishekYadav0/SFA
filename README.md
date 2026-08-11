@@ -14,7 +14,7 @@ A full-stack Sales Force Automation system built with MERN Stack.
 - Admin & Staff role-based authentication
 - Order Plans management
 - Lifting Plans management
-- Collection Plans management
+- Collections management
 - Sales Reports & Dashboard
 - Product & Dealer management
 

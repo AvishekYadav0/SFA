@@ -10,6 +10,7 @@ const saleSchema = new mongoose.Schema({
   province:    String,
   area:        String,
   date:        { type: Date, default: Date.now },
+  dueDate:     Date,
   items:       [{
     product:      { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
     productName:  String,
@@ -26,6 +27,10 @@ const saleSchema = new mongoose.Schema({
   }],
   grandTotal:  { type: Number, default: 0 },
   collectedAmount: { type: Number, default: 0 },
+  paidAmount: { type: Number, default: 0, min: 0 },
+  remainingBalance: { type: Number, default: 0, min: 0 },
+  collection:   { type: mongoose.Schema.Types.ObjectId, ref: 'Collection' },
+  paymentStatus: { type: String, enum: ['UNPAID', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'], default: 'UNPAID' },
   paymentType: { type: String, enum: ['cash', 'online', 'credit', 'bank', 'esewa', 'fonepay', 'cheque'], default: 'cash' },
   status: {
     type: String,

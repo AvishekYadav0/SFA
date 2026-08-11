@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const dealerSchema = new mongoose.Schema({
   dealerName:      { type: String, required: true },
   dealerCode:      { type: String, unique: true, sparse: true },
+  distributor:     String,
   ownerName:       String,
   phone:           String,
   email:           String,
@@ -25,7 +26,15 @@ const dealerSchema = new mongoose.Schema({
   assignedRole:    { type: String, enum: ['so', 'se', 'asm', 'rsm', 'nsm'], default: null },
 
   creditLimit:     { type: Number, default: 0 },
+  openingBalance:  { type: Number, default: 0, min: 0 },
+  creditNotes:     { type: Number, default: 0, min: 0 },
   outstandingAmount: { type: Number, default: 0 },
+  dueAmount:       { type: Number, default: 0 },
+  overdueAmount:   { type: Number, default: 0 },
+  paymentType:     { type: String, enum: ['cash', 'credit'], default: 'cash' },
+  creditDays:      { type: Number, default: 0 },
+  openingBalanceDate: Date,
+  creditStatus:    { type: String, enum: ['allowed', 'blocked'], default: 'allowed' },
 
   status:          { type: String, enum: ['active', 'inactive'], default: 'active' },
   performanceScore: { type: Number, default: 0 },

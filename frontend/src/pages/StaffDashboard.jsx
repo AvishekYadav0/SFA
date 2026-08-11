@@ -26,7 +26,7 @@ const ROLE_CONFIG = {
     permissions: [
       { label: 'Create & manage Order Plans', allowed: true },
       { label: 'Create & manage Lifting Plans', allowed: true },
-      { label: 'Create & manage Collection Plans', allowed: true },
+      { label: 'Create & manage Collections', allowed: true },
       { label: 'Edit pending records', allowed: true },
       { label: 'View Reports', allowed: false },
       { label: 'Manage Products / Dealers', allowed: false },
@@ -36,7 +36,7 @@ const ROLE_CONFIG = {
     quickActions: [
       { label: 'Create Order Plan', icon: FiClipboard, to: '/orders', color: 'bg-blue-600 hover:bg-blue-700' },
       { label: 'Create Lifting Plan', icon: FiTruck, to: '/lifting', color: 'bg-indigo-600 hover:bg-indigo-700' },
-      { label: 'Create Collection Plan', icon: FiDollarSign, to: '/collections', color: 'bg-emerald-600 hover:bg-emerald-700' },
+      { label: 'Record Collection', icon: FiDollarSign, to: '/collections', color: 'bg-emerald-600 hover:bg-emerald-700' },
     ],
   },
   ASM: {

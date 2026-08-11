@@ -2,7 +2,11 @@ const express = require('express');
 const router  = express.Router();
 const Order   = require('../models/Order');
 const Sale    = require('../models/Sale');
-const { protect } = require('../middleware/auth');
+const Product = require('../models/Product');
+const Dealer  = require('../models/Dealer');
+const Collection = require('../models/Collection');
+const DealerLedger = require('../models/DealerLedger');
+const { protect, hierarchyFields } = require('../middleware/auth');
 
 const NEPAL_PROVINCES = [
   'Koshi Province',
@@ -19,33 +23,109 @@ const PAYMENT_METHODS = ['cash', 'bank', 'esewa', 'fonepay', 'cheque', 'credit']
 // All active statuses (not rejected/cancelled) — show in sales
 const SALE_STATUSES = ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
 
-function normalizeSaleItems(items = []) {
+async function normalizeSaleItems(items = []) {
+  const productIds = (items || []).map(item => item.product).filter(Boolean);
+  const products = await Product.find({ _id: { $in: productIds } }).lean();
+  const productMap = new Map(products.map(product => [String(product._id), product]));
+
   return (items || []).map(it => {
+    const product = productMap.get(String(it.product));
+    if (!product) return null;
     const qty = Number(it.quantity) || 0;
-    const rate = Number(it.rate) || 0;
+    const rate = Number(product.customerPrice || product.amount || 0);
     const basic = qty * rate;
-    const discountPercent = Number(it.discountPercent) || 0;
-    const discountAmount = Number(it.discountAmount) || 0;
-    const taxableBasic = Math.max(0, basic - discountAmount - ((basic * discountPercent) / 100));
-    const excise = taxableBasic * ((Number(it.excisePercent) || 0) / 100);
-    const vat = (taxableBasic + excise) * ((Number(it.vatPercent) || 0) / 100);
+    const excise = (Number(product.exciseAmount) || 0) * qty;
+    const vat = (Number(product.vatAmount) || 0) * qty;
     return {
       ...it,
       quantity: qty,
       rate,
-      discountPercent,
-      discountAmount,
+      productName: product.productName,
+      ml: product.ml,
+      up: product.up,
       basicAmount: basic,
       exciseAmount: excise,
       vatAmount: vat,
-      grandTotal: taxableBasic + excise + vat,
+      grandTotal: basic + excise + vat,
     };
-  });
+  }).filter(Boolean);
 }
 
 function buildInvoiceNumber() {
   const ts = Date.now().toString();
   return `INV-${ts.slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`;
+}
+
+function parseDateOnly(value) {
+  if (!value) return new Date();
+  const [year, month, day] = String(value).slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function addDateOnlyDays(date, days) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + (Number(days) || 0));
+  return result;
+}
+
+async function postSaleAccounting({ sale, req, dealer, salesperson, collectedAmount, paymentType, collectionDate }) {
+  const User = require('../models/User');
+  const salespersonUser = await User.findById(salesperson).lean();
+  const hierarchy = salespersonUser ? await hierarchyFields(salespersonUser) : {};
+  const collectionAmount = Math.max(0, Number(collectedAmount) || 0);
+  const netOutstanding = Math.max(0, Number(sale.grandTotal) - collectionAmount);
+  const projectedOutstanding = Number(dealer.outstandingAmount || 0) + netOutstanding;
+  if (dealer.creditStatus === 'allowed' && projectedOutstanding > Number(dealer.creditLimit || 0)) {
+    throw new Error('Sale exceeds dealer credit limit');
+  }
+  if (dealer.creditStatus === 'blocked' && netOutstanding > 0) {
+    throw new Error('Dealer credit is blocked; collect the full sale amount before saving');
+  }
+  let collection = null;
+
+  if (collectionAmount > 0) {
+    collection = await Collection.create({
+      dealer: dealer._id,
+      se: hierarchy.se || salespersonUser?._id,
+      so: hierarchy.so,
+      asm: hierarchy.asm,
+      rsm: hierarchy.rsm,
+      nsm: hierarchy.nsm,
+      amount: collectionAmount,
+      paymentType: ['cash', 'bank', 'online', 'cheque'].includes(req.body.paymentMode || paymentType) ? (req.body.paymentMode || paymentType) : 'cash',
+      referenceNo: req.body.referenceNo || '',
+      date: collectionDate ? new Date(collectionDate) : sale.date,
+      province: dealer.province,
+      district: dealer.district,
+      area: dealer.area,
+      region: dealer.region,
+      status: 'verified',
+      createdBy: req.user._id,
+    });
+    sale.collection = collection._id;
+  }
+
+  const dueDate = sale.dueDate || addDateOnlyDays(sale.date, dealer.creditDays);
+  sale.dueDate = dueDate;
+  await sale.save();
+
+  const overdueAmount = dueDate < new Date() ? projectedOutstanding : 0;
+  await Dealer.findByIdAndUpdate(dealer._id, {
+    $set: { outstandingAmount: projectedOutstanding, dueAmount: projectedOutstanding, overdueAmount },
+  });
+  await DealerLedger.create({
+    dealer: dealer._id,
+    sale: sale._id,
+    collection: collection?._id,
+    date: sale.date,
+    type: 'sale',
+    debit: sale.grandTotal,
+    credit: collectionAmount,
+    balance: projectedOutstanding,
+    reference: sale.invoiceNumber,
+    createdBy: req.user._id,
+  });
+  return collection;
 }
 
 /**
@@ -336,6 +416,7 @@ router.post('/manual', protect, async (req, res) => {
       grandTotal,
       collectedAmount,
       paymentType,
+      collectionDate,
       status = 'completed',
       items = [],
       remarks = '',
@@ -345,31 +426,18 @@ router.post('/manual', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'salesperson, dealer, province, and area are required' });
     }
 
-    // Build order items with correct amounts (fixed excise/vat × qty)
-    const orderItems = (items || []).filter(it => it.product).map(it => {
-      const qty = Number(it.quantity) || 0;
-      const rate = Number(it.rate) || 0;
-      const basic = qty * rate;
-      const excise = (Number(it.exciseAmount) || 0) * qty;
-      const vat = (Number(it.vatAmount) || 0) * qty;
-      return {
-        product: it.product,
-        productName: it.productName,
-        customerType: it.customerType || 'MM',
-        ml: it.ml,
-        up: it.up,
-        quantity: qty,
-        rate,
-        basicAmount: basic,
-        exciseAmount: excise,
-        vatAmount: vat,
-        grandTotal: basic + excise + vat,
-      };
-    });
+    const dealerDoc = await Dealer.findById(dealer);
+    if (!dealerDoc) return res.status(404).json({ success: false, message: 'Dealer not found' });
+    const orderItems = await normalizeSaleItems(items);
 
     const computedGrandTotal = orderItems.reduce((s, i) => s + (i.grandTotal || 0), 0);
-    const finalGrandTotal = Number(grandTotal) || computedGrandTotal;
+    const finalGrandTotal = computedGrandTotal;
     const finalCollected = collectedAmount !== undefined && collectedAmount !== '' ? Number(collectedAmount) : finalGrandTotal;
+    const projectedOutstanding = Number(dealerDoc.outstandingAmount || 0) + Math.max(0, finalGrandTotal - finalCollected);
+    if (dealerDoc.creditStatus === 'allowed' && projectedOutstanding > Number(dealerDoc.creditLimit || 0))
+      return res.status(400).json({ success: false, message: 'Sale exceeds dealer credit limit' });
+    if (dealerDoc.creditStatus === 'blocked' && finalGrandTotal > finalCollected)
+      return res.status(400).json({ success: false, message: 'Dealer credit is blocked; collect the full sale amount before saving' });
 
     // Resolve salesperson to hierarchy field
     const User = require('../models/User');
@@ -380,7 +448,7 @@ router.post('/manual', protect, async (req, res) => {
     const newOrder = await Order.create({
       [hierarchyField]: salesperson,
       dealer,
-      date: date ? new Date(date) : new Date(),
+      date: parseDateOnly(date),
       province,
       area,
       items: orderItems,
@@ -395,12 +463,13 @@ router.post('/manual', protect, async (req, res) => {
       createdBy: req.user._id,
     });
 
-    const normalizedItems = normalizeSaleItems(items);
+    const normalizedItems = orderItems;
     const saleData = {
       manualSaleId:   `MSALE-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       salesperson,
       dealer,
       date: date ? new Date(date) : new Date(),
+      dueDate: addDateOnlyDays(parseDateOnly(date), dealerDoc.creditDays),
       province,
       area,
       items: normalizedItems,
@@ -418,7 +487,8 @@ router.post('/manual', protect, async (req, res) => {
 
     const sale = await Sale.create(saleData);
 
-    return res.status(201).json({ success: true, data: sale, order: newOrder });
+    const collection = await postSaleAccounting({ sale, req, dealer: dealerDoc, salesperson, collectedAmount: finalCollected, paymentType, collectionDate });
+    return res.status(201).json({ success: true, data: sale, order: newOrder, collection });
   } catch (err) {
     console.error('manual sale failed:', err);
     return res.status(400).json({ success: false, message: err.message });
@@ -461,6 +531,7 @@ router.post('/from-order', protect, async (req, res) => {
       grandTotal,
       collectedAmount,
       paymentType,
+      collectionDate,
       status = 'completed',
       items = [],
       remarks = '',
@@ -480,9 +551,17 @@ router.post('/from-order', protect, async (req, res) => {
       return res.status(409).json({ success: false, message: 'A sale already exists for this order' });
     }
 
-    const normalizedItems = normalizeSaleItems(items);
+    const normalizedItems = await normalizeSaleItems(items);
     const computedGrandTotal = normalizedItems.reduce((s, i) => s + (i.grandTotal || 0), 0);
-    const finalGrandTotal = grandTotal ?? computedGrandTotal;
+    const finalGrandTotal = computedGrandTotal;
+    const dealerDoc = await Dealer.findById(dealer || sourceOrder.dealer);
+    if (!dealerDoc) return res.status(404).json({ success: false, message: 'Dealer not found' });
+    const finalCollected = collectedAmount ?? finalGrandTotal;
+    const projectedOutstanding = Number(dealerDoc.outstandingAmount || 0) + Math.max(0, finalGrandTotal - finalCollected);
+    if (dealerDoc.creditStatus === 'allowed' && projectedOutstanding > Number(dealerDoc.creditLimit || 0))
+      return res.status(400).json({ success: false, message: 'Sale exceeds dealer credit limit' });
+    if (dealerDoc.creditStatus === 'blocked' && finalGrandTotal > finalCollected)
+      return res.status(400).json({ success: false, message: 'Dealer credit is blocked; collect the full sale amount before saving' });
 
     const saleData = {
       order: sourceOrder._id,
@@ -490,12 +569,13 @@ router.post('/from-order', protect, async (req, res) => {
       invoiceNumber: buildInvoiceNumber(),
       salesperson: salesperson || sourceOrder.so || sourceOrder.se || sourceOrder.asm || sourceOrder.rsm || sourceOrder.nsm,
       dealer: dealer || sourceOrder.dealer,
-      date: date ? new Date(date) : sourceOrder.date || new Date(),
+      date: date ? parseDateOnly(date) : sourceOrder.date || new Date(),
+      dueDate: addDateOnlyDays(date ? parseDateOnly(date) : sourceOrder.date || new Date(), dealerDoc.creditDays),
       province: province || sourceOrder.province,
       area: area || sourceOrder.area,
       items: normalizedItems,
       grandTotal: finalGrandTotal,
-      collectedAmount: collectedAmount ?? finalGrandTotal,
+      collectedAmount: finalCollected,
       paymentType: paymentType || sourceOrder.paymentType || 'cash',
       status,
       staffId: req.user._id,
@@ -507,7 +587,16 @@ router.post('/from-order', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'No salesperson assigned to this order' });
     }
     const sale = await Sale.create(saleData);
-    return res.status(201).json({ success: true, data: sale });
+    const collection = await postSaleAccounting({
+      sale,
+      req,
+      dealer: dealerDoc,
+      salesperson: saleData.salesperson,
+      collectedAmount: finalCollected,
+      paymentType,
+      collectionDate,
+    });
+    return res.status(201).json({ success: true, data: sale, collection });
   } catch (err) {
     console.error('manual sale failed:', err);
     return res.status(400).json({ success: false, message: err.message });

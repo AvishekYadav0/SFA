@@ -5,8 +5,13 @@ const { protect } = require('../middleware/auth');
 const col = express.Router();
 const cc  = require('../controllers/collectionController');
 col.use(protect);
-col.get('/',    cc.getAll); col.get('/:id', cc.getOne);
-col.post('/',   cc.create); col.put('/:id', cc.update); col.delete('/:id', cc.remove);
+col.get('/dashboard', cc.dashboard);
+col.get('/dealer/:dealerId/invoices', cc.invoices);
+col.get('/',    cc.getAll);
+col.get('/:id', cc.getOne);
+col.post('/',   cc.create);
+col.put('/:id', cc.update);
+col.delete('/:id', cc.remove);
 exports.collections = col;
 
 // Visits

@@ -16,6 +16,7 @@ const Dealers       = lazy(() => import('./pages/Dealers'));
 const Products      = lazy(() => import('./pages/Products'));
 const Orders        = lazy(() => import('./pages/Orders'));
 const Collections   = lazy(() => import('./pages/Collections'));
+const CollectionPlans = lazy(() => import('./pages/CollectionPlans'));
 const Visits        = lazy(() => import('./pages/Visits'));
 const Reports       = lazy(() => import('./pages/Reports'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -25,6 +26,7 @@ const Lifting       = lazy(() => import('./pages/Lifting'));
 const Pipeline      = lazy(() => import('./pages/Pipeline'));
 const Sales         = lazy(() => import('./pages/Sales'));
 const DealerPortal  = lazy(() => import('./pages/DealerPortal'));
+const DealerDetail  = lazy(() => import('./pages/DealerDetail'));
 
 // Legacy pages
 const DailyVisits   = lazy(() => import('./pages/DailyVisits'));
@@ -67,11 +69,13 @@ const AppRoutes = () => {
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/users"        element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Users /></RoleRoute>} />
           <Route path="/dealers"      element={<Dealers />} />
+          <Route path="/dealers/:id"  element={<DealerDetail />} />
           <Route path="/products"     element={<RoleRoute roles={['nsm','asm','admin']}><Products /></RoleRoute>} />
           <Route path="/orders"       element={<Orders />} />
           <Route path="/pipeline"     element={<RoleRoute roles={['nsm','rsm','asm','admin']}><Pipeline /></RoleRoute>} />
           <Route path="/sales"        element={<Sales />} />
           <Route path="/collections"  element={<Collections />} />
+          <Route path="/collection-plans" element={<CollectionPlans />} />
           <Route path="/visits"       element={<Visits />} />
           <Route path="/reports"      element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Reports /></RoleRoute>} />
           <Route path="/dealer-portal" element={<RoleRoute roles={['dealer']}><DealerPortal /></RoleRoute>} />

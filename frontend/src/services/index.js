@@ -22,6 +22,9 @@ export const userService = {
 export const dealerService = {
   getAll:    (params)      => api.get('/dealers', { params }),
   getOne:    (id)          => api.get(`/dealers/${id}`),
+  getCollections: (id)     => api.get(`/dealers/${id}/collections`),
+  getInvoices:    (id)     => api.get(`/dealers/${id}/invoices`),
+  getLedger:      (id)     => api.get(`/dealers/${id}/ledger`),
   create:    (data)        => api.post('/dealers', data),
   update:    (id, data)    => api.put(`/dealers/${id}`, data),
   delete:    (id)          => api.delete(`/dealers/${id}`),
@@ -54,6 +57,13 @@ export const collectionService = {
   create:  (data)     => api.post('/collections', data),
   update:  (id, data) => api.put(`/collections/${id}`, data),
   delete:  (id)       => api.delete(`/collections/${id}`),
+  getDashboard: ()    => api.get('/collections/dashboard'),
+  getDealerInvoices: (dealerId) => api.get(`/collections/dealer/${dealerId}/invoices`),
+  getPlans:  (params) => api.get('/collection-plans', { params }),
+  getPlan:   (id)     => api.get(`/collection-plans/${id}`),
+  createPlan: (data) => api.post('/collection-plans', data),
+  updatePlan: (id, data) => api.put(`/collection-plans/${id}`, data),
+  deletePlan: (id)   => api.delete(`/collection-plans/${id}`),
 };
 
 export const visitService = {

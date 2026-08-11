@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { dealerService, userService } from '../services';
 import { Modal } from '../components/common/Modal';
@@ -6,7 +7,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import {
-  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink, FiUserPlus
+  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink, FiUserPlus, FiChevronRight
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -60,7 +61,7 @@ export default function Dealers() {
   const { user } = useAuth();
   const [allData, setAllData]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
-  const [selectedProvince, setSelectedProvince] = useState(null);
+  const [selectedProvince, setSelectedProvince] = useState('__all__');
   const [modal, setModal]                       = useState({ open: false, data: null, province: '' });
   const [confirm, setConfirm]                   = useState({ open: false, id: null });
   const [deleting, setDeleting]                 = useState(false);
@@ -106,7 +107,7 @@ export default function Dealers() {
     } catch { setAllUsers([]); }
     setLinkModal({ open: true, dealer });
   };
-
+  const navigate = useNavigate();
   const openSOModal = async (dealer) => {
     try {
       const res = await userService.getAll({ limit: 1000 });
@@ -135,12 +136,26 @@ export default function Dealers() {
   };
 
   const openCreate = (province = '') => {
-    reset({ province, status: 'active', openingBalance: 0, creditLimit: 0 });
+    reset({
+      province,
+      status: 'active',
+      creditLimit: 0,
+      paymentType: 'credit',
+      creditDays: 0,
+      outstandingAmount: 0,
+      openingBalanceDate: '',
+      creditStatus: 'allowed',
+    });
     setModal({ open: true, data: null, province });
   };
 
   const openEdit = (d) => {
-    reset(d);
+    reset({
+      ...d,
+      openingBalanceDate: d.openingBalanceDate
+        ? new Date(d.openingBalanceDate).toISOString().slice(0, 10)
+        : '',
+    });
     setModal({ open: true, data: d, province: d.province });
   };
 
@@ -222,7 +237,7 @@ export default function Dealers() {
                 </thead>
                 <tbody>
                   {provinceData.map(d => (
-                    <tr key={d._id}>
+                    <tr key={d._id} onClick={() => openEdit(d)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td>
                         <div className="flex items-center gap-2">
                           <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
@@ -249,7 +264,7 @@ export default function Dealers() {
                       <td>{formatCurrency(d.creditLimit)}</td>
                       <td>{formatCurrency(d.openingBalance)}</td>
                       <td><StatusBadge status={d.status} /></td>
-                      <td>
+                      <td onClick={event => event.stopPropagation()}>
                         <div className="flex gap-1.5">
                           <button onClick={() => openSOModal(d)}
                             title="Assign Sales Officers"
@@ -264,6 +279,11 @@ export default function Dealers() {
                           <button onClick={() => openEdit(d)}
                             className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors">
                             <FiEdit2 size={14} />
+                          </button>
+                          <button onClick={(event) => { event.stopPropagation(); navigate(`/dealers/${d._id}`); }}
+                            title="View details"
+                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 transition-colors">
+                            <FiChevronRight size={14} />
                           </button>
                           <button onClick={() => setConfirm({ open: true, id: d._id })}
                             className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500 transition-colors">
@@ -523,6 +543,10 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
             <input {...register('ownerName', { required: 'Required' })} className="input" placeholder="e.g. Ram Bahadur" />
             {errors.ownerName && <p className="text-red-500 text-xs mt-1">{errors.ownerName.message}</p>}
           </div>
+          <div>
+            <label className="label">Distributor</label>
+            <input {...register('distributor')} className="input" placeholder="e.g. ABC Distribution" />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -561,23 +585,48 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
           <input {...register('address')} className="input" placeholder="e.g. New Road, Kathmandu" />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Opening Balance (NPR)</label>
-            <input {...register('openingBalance', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Credit &amp; Payment Terms</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Credit Limit (NPR) *</label>
+              <input {...register('creditLimit', { required: 'Required', valueAsNumber: true })} type="number" step="0.01" className="input" />
+              {errors.creditLimit && <p className="text-red-500 text-xs mt-1">{errors.creditLimit.message}</p>}
+            </div>
+            <div>
+              <label className="label">Payment Type *</label>
+              <select {...register('paymentType', { required: 'Required' })} className="input">
+                <option value="cash">Cash</option>
+                <option value="credit">Credit</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Credit Days</label>
+              <input {...register('creditDays', { valueAsNumber: true, min: 0 })} type="number" min="0" step="1" className="input" />
+            </div>
+            <div>
+              <label className="label">Opening Outstanding (NPR)</label>
+              <input {...register('outstandingAmount', { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" />
+            </div>
+            <div>
+              <label className="label">Opening Balance Date</label>
+              <input {...register('openingBalanceDate')} type="date" className="input" />
+            </div>
+            <div>
+              <label className="label">Credit Status</label>
+              <select {...register('creditStatus')} className="input">
+                <option value="allowed">Allowed</option>
+                <option value="blocked">Blocked</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Status</label>
+              <select {...register('status')} className="input">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="label">Credit Limit (NPR)</label>
-            <input {...register('creditLimit', { valueAsNumber: true })} type="number" step="0.01" className="input" defaultValue={0} />
-          </div>
-        </div>
-
-        <div>
-          <label className="label">Status</label>
-          <select {...register('status')} className="input">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

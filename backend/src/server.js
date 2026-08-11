@@ -21,6 +21,7 @@ app.use('/api/products',     require('./routes/products'));
 app.use('/api/orders',       require('./routes/orders'));
 app.use('/api/sales',        require('./routes/sales'));
 app.use('/api/collections',  collections);
+app.use('/api/collection-plans', require('./routes/collectionPlans'));
 app.use('/api/visits',       visits);
 app.use('/api/dashboard',    dashboard);
 app.use('/api/reports',      reports);
@@ -44,11 +45,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: err.message || 'Server Error' });
 });
 
-const PORT = parseInt(process.env.PORT) || 8000;
-const server = app.listen(PORT, '0.0.0.0', () => console.log(`✅ SFA Server running on port ${PORT}`));
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${PORT} in use. Run: lsof -ti:${PORT} | xargs kill -9`);
-    process.exit(1);
-  }
-});
+const DEFAULT_PORT = parseInt(process.env.PORT) || 8000;
+const MAX_TRIES = 10;
+
+function startServer(port, attemptsLeft = MAX_TRIES) {
+  const server = app.listen(port, '0.0.0.0', () => console.log(`✅ SFA Server running on port ${port}`));
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${port} in use.`);
+      if (attemptsLeft > 1) {
+        const nextPort = port + 1;
+        console.log(`Trying port ${nextPort}...`);
+        setTimeout(() => startServer(nextPort, attemptsLeft - 1), 200);
+      } else {
+        console.error(`No available ports after ${MAX_TRIES} attempts. Run: lsof -ti:${port} | xargs kill -9`);
+        process.exit(1);
+      }
+    } else {
+      console.error(err);
+      process.exit(1);
+    }
+  });
+}
+
+startServer(DEFAULT_PORT);

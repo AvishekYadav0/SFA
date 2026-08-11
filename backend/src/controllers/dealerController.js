@@ -140,3 +140,37 @@ exports.linkUser = async (req, res) => {
     res.json({ success: true, data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
+
+exports.collections = async (req, res) => {
+  try {
+    const filter = { dealer: req.params.id };
+    const data = await require('../models/Collection').find(filter)
+      .populate('dealer', 'dealerName dealerCode')
+      .populate('allocations.sale', 'invoiceNumber date dueDate grandTotal paidAmount remainingBalance paymentStatus')
+      .sort('-date');
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.invoices = async (req, res) => {
+  try {
+    const invoices = await require('../models/Sale').find({ dealer: req.params.id, status: { $in: ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'] }, remainingBalance: { $gt: 0 } })
+      .select('invoiceNumber date dueDate grandTotal paidAmount remainingBalance paymentStatus')
+      .sort({ dueDate: 1, date: 1 });
+    res.json({ success: true, data: invoices });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.ledger = async (req, res) => {
+  try {
+    const entries = await require('../models/DealerLedger').find({ dealer: req.params.id })
+      .sort('-date');
+    res.json({ success: true, data: entries });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

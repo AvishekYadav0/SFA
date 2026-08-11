@@ -14,6 +14,7 @@ const TITLES = {
   '/pipeline':     'Sales Pipeline',
   '/sales':        'Sales',
   '/collections':  'Collections',
+  '/collection-plans': 'Collection Plans',
   '/visits':       'Visits',
   '/targets':      'Targets',
   '/reports':      'Reports',

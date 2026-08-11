@@ -1,10 +1,9 @@
-const router = require('express').Router();
-const c = require('../controllers/collectionController');
+const express = require('express');
+const router = express.Router();
+const c = require('../controllers/collectionPlanController');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect);
-router.get('/dashboard', c.dashboard);
-router.get('/dealer/:dealerId/invoices', c.invoices);
 router.route('/')
   .get(c.getAll)
   .post(authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), c.create);
