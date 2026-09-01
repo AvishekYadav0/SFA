@@ -1,6 +1,30 @@
 const Dealer = require('../models/Dealer');
 const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 
+// ── Core formula: Outstanding = openingBalance + sum(order remainingBalance) ──
+async function calcOutstanding(dealerId) {
+  const Order = require('../models/Order');
+  const ACTIVE = ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
+  const orders = await Order.find({ dealer: dealerId, status: { $in: ACTIVE } })
+    .select('grandTotal collectedAmount');
+  const dealer = await Dealer.findById(dealerId).select('openingBalance creditLimit creditNotes');
+  if (!dealer) return { outstandingAmount: 0, availableCredit: 0 };
+
+  const invoiceRemaining = orders.reduce((sum, o) => {
+    return sum + Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0));
+  }, 0);
+
+  const outstandingAmount = Number(dealer.openingBalance || 0) + invoiceRemaining - Number(dealer.creditNotes || 0);
+  const availableCredit = Math.max(0, Number(dealer.creditLimit || 0) - outstandingAmount);
+  return { outstandingAmount: Math.max(0, outstandingAmount), availableCredit };
+}
+
+// Recalculate and persist outstanding on dealer document
+async function syncOutstanding(dealerId) {
+  const { outstandingAmount, availableCredit } = await calcOutstanding(dealerId);
+  await Dealer.findByIdAndUpdate(dealerId, { outstandingAmount });
+  return { outstandingAmount, availableCredit };
+}
 exports.getAll = async (req, res) => {
   try {
     const page   = parseInt(req.query.page)  || 1;
@@ -19,7 +43,7 @@ exports.getAll = async (req, res) => {
     ];
 
     const total = await Dealer.countDocuments(filter);
-    const data  = await Dealer.find(filter)
+    const dealers = await Dealer.find(filter)
       .populate('se',  'name employeeId phone')
       .populate('so',  'name employeeId phone')
       .populate('asm', 'name employeeId phone')
@@ -27,18 +51,33 @@ exports.getAll = async (req, res) => {
       .populate('nsm', 'name employeeId phone')
       .sort('-createdAt').skip((page - 1) * limit).limit(limit);
 
+    // Attach live outstanding to each dealer
+    const data = await Promise.all(dealers.map(async (d) => {
+      const obj = d.toObject();
+      const { outstandingAmount, availableCredit } = await calcOutstanding(d._id);
+      obj.outstandingAmount = outstandingAmount;
+      obj.availableCredit   = availableCredit;
+      return obj;
+    }));
+
     res.json({ success: true, data, total, page, pages: Math.ceil(total / limit) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.getOne = async (req, res) => {
   try {
-    const { scopeFilter } = require('../middleware/auth');
     const scope = scopeFilter(req, 'dealer');
     const data = await Dealer.findOne({ _id: req.params.id, ...scope })
       .populate('se so asm rsm nsm', 'name employeeId phone');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true, data });
+
+    // Always return live outstanding from actual invoice remaining balances
+    const { outstandingAmount, availableCredit } = await calcOutstanding(req.params.id);
+    const result = data.toObject();
+    result.outstandingAmount = outstandingAmount;
+    result.availableCredit   = availableCredit;
+
+    res.json({ success: true, data: result });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
@@ -62,8 +101,40 @@ exports.create = async (req, res) => {
       nsm: creator?.nsm || (creator?.role === 'nsm' ? creator._id : null),
     };
 
-    const data = await Dealer.create({
+    const creditLimit = Number(req.body.creditLimit ?? 0);
+    const creditDays = Number(req.body.creditDays ?? 0);
+    const openingOutstanding = Number(req.body.openingOutstanding ?? req.body.outstandingAmount ?? req.body.openingBalance ?? 0);
+
+    if (creditLimit < 0) throw new Error('Credit Limit cannot be negative.');
+    if (creditDays < 0) throw new Error('Credit Days cannot be negative.');
+    if (openingOutstanding < 0) throw new Error('Opening Outstanding cannot be negative.');
+    if (openingOutstanding > creditLimit) throw new Error('Opening Outstanding cannot exceed Credit Limit.');
+
+    const normalized = {
       ...req.body,
+      dealerName: req.body.dealerName?.trim(),
+      ownerName: req.body.ownerName?.trim(),
+      distributor: req.body.distributor?.trim(),
+      phone: req.body.phone?.trim(),
+      panNumber: req.body.panNumber?.trim(),
+      nidNumber: req.body.nidNumber?.trim(),
+      province: req.body.province?.trim(),
+      district: req.body.district?.trim(),
+      address: req.body.address?.trim(),
+      creditLimit,
+      paymentType: req.body.paymentType || 'credit',
+      creditDays,
+      openingBalance: openingOutstanding,
+      originalOpeningOutstanding: openingOutstanding,
+      remainingOpeningOutstanding: openingOutstanding,
+      outstandingAmount: openingOutstanding,
+      openingBalanceDate: req.body.openingBalanceDate || null,
+      creditStatus: req.body.creditStatus || 'allowed',
+      status: req.body.status || 'active',
+    };
+
+    const data = await Dealer.create({
+      ...normalized,
       ...hierarchy,
       ...rsmStamp,
       createdBy: req.user._id,
@@ -75,9 +146,40 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const data = await Dealer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    // Accept openingOutstanding OR openingBalance — both mean the same thing
+    const rawOpening = req.body.openingOutstanding ?? req.body.openingBalance;
+    const openingBalance = rawOpening !== undefined ? Number(rawOpening) : undefined;
+    const creditLimit    = req.body.creditLimit    !== undefined ? Number(req.body.creditLimit) : undefined;
+
+    const updateData = { ...req.body };
+
+    // Always save as openingBalance in DB, also update all related fields
+    if (openingBalance !== undefined) {
+      updateData.openingBalance                = openingBalance;
+      updateData.originalOpeningOutstanding    = openingBalance;
+      updateData.remainingOpeningOutstanding   = openingBalance;
+      // Remove client-sent variants to avoid confusion
+      delete updateData.openingOutstanding;
+    }
+    if (creditLimit !== undefined) updateData.creditLimit = creditLimit;
+
+    // Never let client overwrite outstandingAmount — always recalculate below
+    delete updateData.outstandingAmount;
+    delete updateData.availableCredit;
+
+    await Dealer.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: false });
+
+    // Recalculate live outstanding using new openingBalance
+    const { outstandingAmount, availableCredit } = await syncOutstanding(req.params.id);
+    const data = await Dealer.findById(req.params.id)
+      .populate('se so asm rsm nsm', 'name employeeId phone');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true, data });
+
+    const result = data.toObject();
+    result.outstandingAmount = outstandingAmount;
+    result.availableCredit   = availableCredit;
+
+    res.json({ success: true, data: result });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
@@ -156,9 +258,25 @@ exports.collections = async (req, res) => {
 
 exports.invoices = async (req, res) => {
   try {
-    const invoices = await require('../models/Sale').find({ dealer: req.params.id, status: { $in: ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'] }, remainingBalance: { $gt: 0 } })
+    const ACTIVE = ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
+    let invoices = await require('../models/Sale').find({ dealer: req.params.id, status: { $in: ACTIVE }, remainingBalance: { $gt: 0 } })
       .select('invoiceNumber date dueDate grandTotal paidAmount remainingBalance paymentStatus')
       .sort({ dueDate: 1, date: 1 });
+
+    if (!invoices.length) {
+      const orders = await require('../models/Order').find({ dealer: req.params.id, status: { $in: ACTIVE } })
+        .select('orderNumber date grandTotal collectedAmount status').sort({ date: 1 });
+      invoices = orders.map(o => ({
+        _id: o._id,
+        invoiceNumber: o.orderNumber,
+        date: o.date,
+        dueDate: o.date,
+        grandTotal: o.grandTotal || 0,
+        paidAmount: o.collectedAmount || 0,
+        remainingBalance: Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0)),
+        paymentStatus: (o.collectedAmount >= o.grandTotal) ? 'PAID' : (o.collectedAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID'),
+      }));
+    }
     res.json({ success: true, data: invoices });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

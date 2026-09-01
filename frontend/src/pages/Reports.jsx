@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { reportService } from '../services';
 import { formatCurrency, formatDate } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
@@ -116,7 +116,7 @@ const REPORT_CONFIGS = {
     columns: [
       { key: 'orderNumber', label: 'Order #', className: 'font-medium text-primary-600' },
       { key: 'date', label: 'Date', format: 'date' },
-      { key: 'salesperson.fullName', label: 'Sales Person' },
+      { key: 'se.name', label: 'Sales Person', exportValue: (r) => r.se?.name || r.se?.fullName },
       { key: 'dealer.dealerName', label: 'Dealer' },
       { key: 'area', label: 'Area', exportValue: (r) => r.area || r.dealer?.area },
       { key: 'totalBasicAmount', label: 'Basic Amt', format: 'currency', sum: true },
@@ -233,7 +233,7 @@ const REPORT_CONFIGS = {
     fetch: (f) => reportService.dealerHierarchy(f),
     dateFilter: true,
     columns: [
-      { key: 'soleDealerName', label: 'Sole Dealer', className: 'font-medium' },
+      { key: 'soleDealerName', label: 'Sole Dealer', className: 'font-medium', exportValue: (r) => r.soleDealerName || r.distributor || '-' },
       { key: 'dealerName', label: 'Dealer' },
       { key: 'area', label: 'Area' },
       { key: 'province', label: 'Province' },
@@ -251,7 +251,7 @@ const REPORT_CONFIGS = {
       { key: 'orderNumber', label: 'Order #', className: 'font-medium text-primary-600' },
       { key: 'date', label: 'Date', format: 'date' },
       { key: 'dealer.dealerName', label: 'Dealer', exportValue: (r) => r.dealer?.dealerName },
-      { key: 'salesperson.fullName', label: 'Sales Person', exportValue: (r) => r.salesperson?.fullName },
+      { key: 'se.name', label: 'Sales Person', exportValue: (r) => r.se?.name || r.se?.fullName },
       { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} />, exportValue: (r) => r.status },
       { key: 'grandTotal', label: 'Grand Total', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
     ],
@@ -271,6 +271,24 @@ const REPORT_CONFIGS = {
 };
 
 const REPORT_TYPES = Object.entries(REPORT_CONFIGS).map(([id, c]) => ({ id, label: c.label }));
+
+const normalizeReportData = (reportId, payload) => {
+  if (Array.isArray(payload)) {
+    if (reportId === 'product-wise') {
+      return payload.map((row) => ({ ...row, productName: row.productName || row._id, totalQty: row.totalQty ?? row.qty, totalAmount: row.totalAmount ?? row.total }));
+    }
+    if (reportId === 'province-wise') {
+      return payload.map((row) => ({ ...row, orderCount: row.orderCount ?? row.count, totalSales: row.totalSales ?? row.total }));
+    }
+    if (reportId === 'monthly-sales') {
+      return payload.map((row) => ({ ...row, month: row.month || row._id, orderCount: row.orderCount ?? row.count, totalSales: row.totalSales ?? row.total }));
+    }
+    return payload;
+  }
+  if (payload && Array.isArray(payload.rows)) return payload.rows;
+  if (payload && Array.isArray(payload.byDealer)) return payload.byDealer;
+  return [];
+};
 
 // ---------- generic sortable/searchable table ----------
 
@@ -410,14 +428,19 @@ export default function Reports() {
     setLoading(true);
     try {
       const res = await config.fetch(filters);
-      setData(res.data.data || []);
-      if (!res.data.data?.length) toast('No records found for selected filters', { icon: 'ℹ️' });
+      const nextData = normalizeReportData(activeReport, res.data.data);
+      setData(nextData);
+      if (!nextData.length) toast('No records found for selected filters', { icon: 'ℹ️' });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load report');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchReport();
+  }, [activeReport]);
 
   return (
     <div className="space-y-6">

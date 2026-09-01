@@ -10,8 +10,26 @@ const dealerScope = (req) => scopeFilter(req, 'dealer');
 
 const buildDateFilter = (req) => {
   const f = {};
-  if (req.query.startDate && req.query.endDate)
-    f.date = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
+  let start;
+  let end;
+  if (req.query.startDate) start = new Date(req.query.startDate);
+  if (req.query.endDate) {
+    end = new Date(req.query.endDate);
+    end.setHours(23, 59, 59, 999);
+  }
+  if (!start && !end && req.query.range && req.query.range !== 'all') {
+    const now = new Date();
+    end = now;
+    start = new Date(now);
+    if (req.query.range === 'day') start.setHours(0, 0, 0, 0);
+    if (req.query.range === 'week') {
+      start.setDate(now.getDate() - now.getDay());
+      start.setHours(0, 0, 0, 0);
+    }
+    if (req.query.range === 'month') start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (req.query.range === 'year') start = new Date(now.getFullYear(), 0, 1);
+  }
+  if (start || end) f.date = { ...(start ? { $gte: start } : {}), ...(end ? { $lte: end } : {}) };
   return f;
 };
 
@@ -24,7 +42,7 @@ exports.salesReport = async (req, res) => {
     if (req.query.se)       filter.se       = req.query.se;
     if (req.query.asm)      filter.asm      = req.query.asm;
 
-    const [summary, byProvince, bySE, byDealer, byProduct] = await Promise.all([
+    const [summary, byProvince, bySE, byDealer, byProduct, rows] = await Promise.all([
       Order.aggregate([{ $match: filter }, { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, avgOrder: { $avg: '$grandTotal' } } }]),
       Order.aggregate([{ $match: filter }, { $group: { _id: '$province', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } }, { $sort: { total: -1 } }]),
       Order.aggregate([
@@ -47,9 +65,14 @@ exports.salesReport = async (req, res) => {
         { $group: { _id: '$items.productName', total: { $sum: '$items.grandTotal' }, qty: { $sum: '$items.quantity' } } },
         { $sort: { total: -1 } }, { $limit: 20 },
       ]),
+      Order.find(filter)
+        .populate('dealer', 'dealerName area province')
+        .populate('se', 'name fullName')
+        .sort('-date')
+        .lean(),
     ]);
 
-    res.json({ success: true, data: { summary: summary[0] || {}, byProvince, bySE, byDealer, byProduct } });
+    res.json({ success: true, data: rows, summary: summary[0] || {}, byProvince, bySE, byDealer, byProduct });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
@@ -61,7 +84,7 @@ exports.collectionReport = async (req, res) => {
     if (req.query.province) filter.province = req.query.province;
     if (req.query.se)       filter.se       = req.query.se;
 
-    const [summary, byProvince, bySE, byDealer, trend] = await Promise.all([
+    const [summary, byProvince, bySE, byDealer, trend, rows] = await Promise.all([
       Collection.aggregate([{ $match: filter }, { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
       Collection.aggregate([{ $match: filter }, { $group: { _id: '$province', total: { $sum: '$amount' } } }, { $sort: { total: -1 } }]),
       Collection.aggregate([
@@ -83,9 +106,13 @@ exports.collectionReport = async (req, res) => {
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, total: { $sum: '$amount' } } },
         { $sort: { _id: 1 } },
       ]),
+      Collection.find(filter)
+        .populate('dealer', 'dealerName area province')
+        .sort('-date')
+        .lean(),
     ]);
 
-    res.json({ success: true, data: { summary: summary[0] || {}, byProvince, bySE, byDealer, trend } });
+    res.json({ success: true, data: rows, summary: summary[0] || {}, byProvince, bySE, byDealer, trend });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
@@ -229,6 +256,18 @@ exports.monthlySalesReport = async (req, res) => {
     res.json({ success: true, data });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
+exports.orderStatus = async (req, res) => {
+  try {
+    const filter = { ...scopeFilter(req), ...buildDateFilter(req) };
+    if (req.query.status) filter.status = req.query.status;
+    const data = await Order.find(filter)
+      .populate('dealer', 'dealerName')
+      .populate('se', 'name fullName')
+      .sort('-date')
+      .lean();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
 exports.targetVsAchievement = exports.targetAchievement;
 exports.collectionAgeing = async (req, res) => {
   try {
@@ -265,25 +304,66 @@ exports.dealerPerformance = async (req, res) => {
 exports.dealerHierarchy = async (req, res) => {
   try {
     const scope = scopeFilter(req, 'dealer');
-    const data  = await Dealer.find(scope)
+    const dateF = buildDateFilter(req);
+    const dealerFilter = { ...scope };
+    if (req.query.province) dealerFilter.province = req.query.province;
+    if (req.query.region) dealerFilter.region = req.query.region;
+    const data  = await Dealer.find(dealerFilter)
       .populate('se', 'name employeeId')
       .populate('asm', 'name')
       .populate('rsm', 'name')
-      .select('dealerName dealerCode area region province se asm rsm status outstandingAmount')
+      .select('dealerName dealerCode distributor area region province se asm rsm nsm status outstandingAmount')
       .lean();
-    res.json({ success: true, data });
+    const dealerIds = data.map((dealer) => dealer._id);
+    const [sales, collections] = await Promise.all([
+      Order.aggregate([
+        { $match: { ...scopeFilter(req), ...dateF, dealer: { $in: dealerIds }, status: { $nin: ['cancelled'] } } },
+        { $group: { _id: '$dealer', totalSales: { $sum: '$grandTotal' }, orderCount: { $sum: 1 } } },
+      ]),
+      Collection.aggregate([
+        { $match: { ...scopeFilter(req), ...dateF, dealer: { $in: dealerIds } } },
+        { $group: { _id: '$dealer', totalCollection: { $sum: '$amount' } } },
+      ]),
+    ]);
+    const salesByDealer = Object.fromEntries(sales.map((row) => [String(row._id), row]));
+    const collectionsByDealer = Object.fromEntries(collections.map((row) => [String(row._id), row]));
+    const result = data.map((dealer) => ({
+      ...dealer,
+      soleDealerName: dealer.distributor,
+      orderCount: salesByDealer[String(dealer._id)]?.orderCount || 0,
+      totalSales: salesByDealer[String(dealer._id)]?.totalSales || 0,
+      totalCollection: collectionsByDealer[String(dealer._id)]?.totalCollection || 0,
+      outstanding: dealer.outstandingAmount || 0,
+    }));
+    res.json({ success: true, data: result });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 exports.staffHierarchy = async (req, res) => {
   try {
     const { userScopeFilter } = require('../middleware/auth');
     const scope = userScopeFilter(req);
+    const dateF = buildDateFilter(req);
     const data  = await User.find({ ...scope, role: { $nin: ['admin', 'dealer'] } })
       .populate('reportsTo', 'name role')
       .populate('asm rsm nsm', 'name')
       .select('name employeeId role area region province status reportsTo asm rsm nsm')
       .lean();
-    res.json({ success: true, data });
+    const staffIds = data.map((staff) => staff._id);
+    const performance = await Order.aggregate([
+      { $match: { ...scopeFilter(req), ...dateF, status: { $nin: ['cancelled'] } } },
+      { $project: { staffId: { $ifNull: ['$so', '$se'] }, grandTotal: 1 } },
+      { $match: { staffId: { $in: staffIds } } },
+      { $group: { _id: '$staffId', orderCount: { $sum: 1 }, totalSales: { $sum: '$grandTotal' } } },
+    ]);
+    const performanceByStaff = Object.fromEntries(performance.map((row) => [String(row._id), row]));
+    const roleLabels = { nsm: 'National Sales Manager', rsm: 'Regional Sales Manager', asm: 'Area Sales Manager', se: 'Sales Executive', so: 'Marketing Staff' };
+    const result = data.map((staff) => ({
+      ...staff,
+      designation: roleLabels[staff.role] || staff.role,
+      orderCount: performanceByStaff[String(staff._id)]?.orderCount || 0,
+      totalSales: performanceByStaff[String(staff._id)]?.totalSales || 0,
+    }));
+    res.json({ success: true, data: result });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 

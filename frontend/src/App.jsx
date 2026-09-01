@@ -17,6 +17,8 @@ const Products      = lazy(() => import('./pages/Products'));
 const Orders        = lazy(() => import('./pages/Orders'));
 const Collections   = lazy(() => import('./pages/Collections'));
 const CollectionPlans = lazy(() => import('./pages/CollectionPlans'));
+const MonthlyPlanning = lazy(() => import('./pages/MonthlyPlanning'));
+const Targets       = lazy(() => import('./pages/Targets'));
 const Visits        = lazy(() => import('./pages/Visits'));
 const Reports       = lazy(() => import('./pages/Reports'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -76,6 +78,8 @@ const AppRoutes = () => {
           <Route path="/sales"        element={<Sales />} />
           <Route path="/collections"  element={<Collections />} />
           <Route path="/collection-plans" element={<CollectionPlans />} />
+          <Route path="/monthly-planning" element={<MonthlyPlanning />} />
+          <Route path="/targets" element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Targets /></RoleRoute>} />
           <Route path="/visits"       element={<Visits />} />
           <Route path="/reports"      element={<RoleRoute roles={['nsm','rsm','asm','se','admin']}><Reports /></RoleRoute>} />
           <Route path="/dealer-portal" element={<RoleRoute roles={['dealer']}><DealerPortal /></RoleRoute>} />

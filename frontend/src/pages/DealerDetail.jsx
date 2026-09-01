@@ -53,11 +53,12 @@ export default function DealerDetail() {
   }, [id]);
 
   const summary = useMemo(() => ({
-    outstanding: Number(dealer?.outstandingAmount || 0),
-    dueToday: Number(dealer?.dueAmount || 0),
-    overdue: Number(dealer?.overdueAmount || 0),
-    creditLimit: Number(dealer?.creditLimit || 0),
-    openingBalance: Number(dealer?.openingBalance || 0),
+    outstanding:    Number(dealer?.outstandingAmount || 0),
+    dueToday:       Number(dealer?.dueAmount || 0),
+    overdue:        Number(dealer?.overdueAmount || 0),
+    creditLimit:    Number(dealer?.creditLimit || 0),
+    openingBalance: Number(dealer?.openingBalance || dealer?.originalOpeningOutstanding || 0),
+    availableCredit: Number(dealer?.availableCredit ?? Math.max(0, (dealer?.creditLimit || 0) - (dealer?.outstandingAmount || 0))),
   }), [dealer]);
 
   if (loading) return <PageLoader />;
@@ -87,15 +88,15 @@ export default function DealerDetail() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wide">Outstanding Balance</p>
-          <p className="text-2xl font-bold mt-2">{formatCurrency(summary.outstanding)}</p>
+          <p className="text-2xl font-bold text-red-600 mt-2">{formatCurrency(summary.outstanding)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Due Today</p>
-          <p className="text-2xl font-bold mt-2">{formatCurrency(summary.dueToday)}</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Available Credit</p>
+          <p className="text-2xl font-bold text-green-600 mt-2">{formatCurrency(summary.availableCredit)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Overdue Amount</p>
-          <p className="text-2xl font-bold mt-2">{formatCurrency(summary.overdue)}</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Credit Limit</p>
+          <p className="text-2xl font-bold mt-2">{formatCurrency(summary.creditLimit)}</p>
         </div>
       </div>
 

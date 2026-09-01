@@ -7,6 +7,19 @@ const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 
 const ACTIVE_SALE_STATUSES = ['pending', 'approved', 'hold', 'warehouse', 'out_for_delivery', 'delivered', 'completed'];
 
+// Recalculate dealer outstanding from actual order remaining balances
+async function syncDealerOutstanding(dealerId, session) {
+  const Order = require('../models/Order');
+  const orders = await Order.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES } })
+    .select('grandTotal collectedAmount').session(session);
+  const dealer = await Dealer.findById(dealerId).select('openingBalance creditLimit creditNotes').session(session);
+  if (!dealer) return;
+  const invoiceRemaining = orders.reduce((sum, o) => sum + Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0)), 0);
+  const outstandingAmount = Math.max(0, Number(dealer.openingBalance || 0) + invoiceRemaining - Number(dealer.creditNotes || 0));
+  await Dealer.findByIdAndUpdate(dealerId, { outstandingAmount }, { session });
+  return outstandingAmount;
+}
+
 function startOfDay(value = new Date()) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -115,9 +128,30 @@ exports.dashboard = async (req, res) => {
 exports.invoices = async (req, res) => {
   try {
     const dealerId = req.params.dealerId;
-    const invoices = await Sale.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES }, remainingBalance: { $gt: 0 } })
+    const Order = require('../models/Order');
+
+    // Try Sale model first
+    let invoices = await Sale.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES }, remainingBalance: { $gt: 0 } })
       .select('invoiceNumber date dueDate grandTotal paidAmount remainingBalance paymentStatus')
       .sort({ dueDate: 1, date: 1 });
+
+    // Fallback: use Orders if no Sale records exist
+    if (!invoices.length) {
+      const orders = await Order.find({ dealer: dealerId, status: { $in: ['approved', 'pending', 'warehouse', 'out_for_delivery', 'delivered', 'completed'] } })
+        .select('orderNumber date grandTotal collectedAmount status')
+        .sort({ date: 1 });
+      invoices = orders.map(o => ({
+        _id: o._id,
+        invoiceNumber: o.orderNumber,
+        date: o.date,
+        dueDate: o.date,
+        grandTotal: o.grandTotal,
+        paidAmount: o.collectedAmount || 0,
+        remainingBalance: Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0)),
+        paymentStatus: (o.collectedAmount >= o.grandTotal) ? 'PAID' : (o.collectedAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID'),
+      })).filter(o => o.remainingBalance > 0);
+    }
+
     res.json({ success: true, data: invoices });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -133,7 +167,28 @@ exports.create = async (req, res) => {
     const dealer = await Dealer.findById(dealerId).populate('se so asm rsm nsm').session(session);
     if (!dealer) throw new Error('Dealer not found');
 
-    const invoices = await Sale.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES }, remainingBalance: { $gt: 0 } }).sort({ dueDate: 1, date: 1 }).session(session);
+    const Order = require('../models/Order');
+    let invoices = await Sale.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES }, remainingBalance: { $gt: 0 } }).sort({ dueDate: 1, date: 1 }).session(session);
+
+    // Fallback to Orders if no Sale records
+    let usingOrders = false;
+    if (!invoices.length) {
+      const orders = await Order.find({ dealer: dealerId, status: { $in: ['approved', 'pending', 'warehouse', 'out_for_delivery', 'delivered', 'completed'] } })
+        .sort({ date: 1 }).session(session);
+      invoices = orders.map(o => ({
+        _id: o._id,
+        invoiceNumber: o.orderNumber,
+        date: o.date,
+        dueDate: o.date,
+        grandTotal: o.grandTotal || 0,
+        paidAmount: o.collectedAmount || 0,
+        remainingBalance: Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0)),
+        save: async (opts) => {
+          await Order.findByIdAndUpdate(o._id, { collectedAmount: o.paidAmount }, opts);
+        },
+      })).filter(o => o.remainingBalance > 0);
+      usingOrders = true;
+    }
     if (!invoices.length) throw new Error('No unpaid invoices available for this dealer');
 
     const useFifo = req.body.fifo === true || req.body.fifo === 'true';
@@ -188,21 +243,28 @@ exports.create = async (req, res) => {
     const collection = collectionDoc[0];
 
     for (const allocation of allocations) {
-      const sale = await Sale.findById(allocation.sale).session(session);
-      sale.paidAmount = Number(sale.paidAmount || sale.collectedAmount || 0) + allocation.amount;
-      sale.remainingBalance = Math.max(0, Number(sale.grandTotal || 0) - sale.paidAmount);
-      sale.paymentStatus = sale.remainingBalance === 0 ? 'PAID' : (sale.paidAmount > 0 ? 'PARTIALLY_PAID' : (sale.dueDate < new Date() ? 'OVERDUE' : 'UNPAID'));
-      await sale.save({ session });
+      if (usingOrders) {
+        const Order = require('../models/Order');
+        await Order.findByIdAndUpdate(allocation.sale, {
+          $inc: { collectedAmount: allocation.amount }
+        }, { session });
+      } else {
+        const sale = await Sale.findById(allocation.sale).session(session);
+        sale.paidAmount = Number(sale.paidAmount || sale.collectedAmount || 0) + allocation.amount;
+        sale.remainingBalance = Math.max(0, Number(sale.grandTotal || 0) - sale.paidAmount);
+        sale.paymentStatus = sale.remainingBalance === 0 ? 'PAID' : (sale.paidAmount > 0 ? 'PARTIALLY_PAID' : (sale.dueDate < new Date() ? 'OVERDUE' : 'UNPAID'));
+        await sale.save({ session });
+      }
     }
 
-    const recalc = await recalculateDealer(dealerId, session);
+    const outstandingAmount = await syncDealerOutstanding(dealerId, session);
     await DealerLedger.create([{
       dealer: dealerId,
       collection: collection._id,
       date: collection.date,
       type: 'collection',
       credit: totalAmount,
-      balance: recalc.dealer.outstandingAmount,
+      balance: outstandingAmount || 0,
       reference: collection.collectionNumber,
       remarks: `Receipt against invoices: ${allocations.map((a) => a.invoiceNumber).join(', ')}`,
       createdBy: req.user._id,

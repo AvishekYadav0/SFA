@@ -36,7 +36,8 @@ exports.authorize = (...roles) => (req, res, next) => {
 exports.scopeFilter = (req, model = 'default') => {
   const { role, _id } = req.user;
 
-  if (role === 'admin' || role === 'nsm') return {};
+  if (role === 'admin') return {};
+  if (role === 'nsm') return { nsm: _id };
   if (role === 'rsm') return { rsm: _id };
   if (role === 'asm') return { asm: _id };
   if (role === 'se')  return { se:  _id };
@@ -68,7 +69,7 @@ exports.userScopeFilter = (req) => {
   const { role, _id } = req.user;
 
   if (role === 'admin') return { role: { $ne: 'admin' } };
-  if (role === 'nsm')   return { role: { $ne: 'admin' } };
+  if (role === 'nsm')   return { role: { $ne: 'admin' }, $or: [{ nsm: _id }, { _id }] };
   // rsm/asm: match stamped hierarchy field OR direct reportsTo
   // (stamped rsm/asm covers full chain for properly-created users;
   //  reportsTo covers direct reports; both together handle all cases)

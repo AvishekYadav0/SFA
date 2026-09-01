@@ -76,6 +76,7 @@ export const visitService = {
 
 export const dashboardService = {
   get: (params) => api.get('/dashboard', { params }),
+  getMonthlyPlanning: () => api.get('/monthly-planning/current'),
 };
 
 export const reportService = {
@@ -84,6 +85,14 @@ export const reportService = {
   visit:             (params) => api.get('/reports/visit',              { params }),
   outstanding:       (params) => api.get('/reports/outstanding',        { params }),
   targetAchievement: (params) => api.get('/reports/target-achievement', { params }),
+  collections:       (params) => api.get('/reports/collections',        { params }),
+  lifting:           (params) => api.get('/reports/lifting',             { params }),
+  productWise:      (params) => api.get('/reports/product-wise',         { params }),
+  provinceWise:     (params) => api.get('/reports/province-wise',        { params }),
+  monthlySales:     (params) => api.get('/reports/monthly-sales',        { params }),
+  dealerHierarchy:  (params) => api.get('/reports/dealer-hierarchy',     { params }),
+  orderStatus:      (params) => api.get('/reports/order-status',         { params }),
+  staffHierarchy:   (params) => api.get('/reports/staff-hierarchy',      { params }),
   dealerStats:       (id)     => api.get(`/reports/dealer/${id}/stats`),
 };
 

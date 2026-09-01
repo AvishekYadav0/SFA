@@ -4,6 +4,7 @@ const Dealer     = require('../models/Dealer');
 const Visit      = require('../models/Visit');
 const User       = require('../models/User');
 const Target     = require('../models/Target');
+const MonthlyPlanning = require('../models/MonthlyPlanning');
 const { scopeFilter } = require('../middleware/auth');
 
 // Dealer queries need the 'dealer' model hint so scopeFilter handles the so-array correctly
@@ -11,16 +12,29 @@ const dealerScope = (req) => scopeFilter(req, 'dealer');
 
 exports.getDashboard = async (req, res) => {
   try {
-    const scope      = scopeFilter(req);
-    const dealerScp  = dealerScope(req);
     const { role, _id } = req.user;
     const now        = new Date();
     const today      = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // If current month has no data yet, fall back to last 30 days
+    const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const yearStart  = new Date(now.getFullYear(), 0, 1);
     const weekAgo    = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    // Build scope that matches BOTH hierarchy field AND createdBy fallback
+    const buildScope = () => {
+      if (role === 'admin') return {};
+      if (role === 'nsm')   return { $or: [{ nsm: _id }, { createdBy: _id }] };
+      if (role === 'rsm')   return { $or: [{ rsm: _id }, { createdBy: _id }] };
+      if (role === 'asm')   return { $or: [{ asm: _id }, { createdBy: _id }] };
+      if (role === 'se')    return { $or: [{ se: _id },  { createdBy: _id }] };
+      if (role === 'so')    return { $or: [{ so: _id },  { createdBy: _id }] };
+      return { createdBy: _id };
+    };
+    const scope     = buildScope();
+    const dealerScp = scopeFilter(req, 'dealer');
 
     const [
       todaySales, monthlySales, yearlySales,
@@ -31,49 +45,67 @@ exports.getDashboard = async (req, res) => {
       prevMonthlySales,
       deliveredOrders, cancelledOrders,
     ] = await Promise.all([
-      Order.aggregate([{ $match: { ...scope, date: { $gte: today }, status: { $nin: ['cancelled'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      Order.aggregate([{ $match: { ...scope, date: { $gte: monthStart }, status: { $nin: ['cancelled'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      Order.aggregate([{ $match: { ...scope, date: { $gte: yearStart }, status: { $nin: ['cancelled'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Order.aggregate([{ $match: { ...scope, date: { $gte: today }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Order.aggregate([{ $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Order.aggregate([{ $match: { ...scope, date: { $gte: yearStart }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Collection.aggregate([{ $match: { ...scope, date: { $gte: today } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-      Collection.aggregate([{ $match: { ...scope, date: { $gte: monthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Collection.aggregate([{ $match: { ...scope, date: { $gte: last30Days } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Dealer.countDocuments(dealerScp),
       Dealer.countDocuments({ ...dealerScp, status: 'active' }),
       Order.countDocuments({ ...scope, status: 'pending' }),
       Order.countDocuments(scope),
       Dealer.aggregate([{ $match: dealerScp }, { $group: { _id: null, total: { $sum: '$outstandingAmount' } } }]),
-      Order.aggregate([{ $match: { ...scope, date: { $gte: prevMonthStart, $lte: prevMonthEnd }, status: { $nin: ['cancelled'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Order.aggregate([{ $match: { ...scope, date: { $gte: prevMonthStart, $lte: prevMonthEnd }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Order.countDocuments({ ...scope, status: 'delivered' }),
       Order.countDocuments({ ...scope, status: 'cancelled' }),
     ]);
 
     const target = await Target.findOne({ user: _id, month: now.getMonth() + 1, year: now.getFullYear() });
+    const currentPlanning = await MonthlyPlanning.findOneAndUpdate(
+      { month: now.getMonth() + 1, year: now.getFullYear() },
+      { $setOnInsert: { target: 5000000, schemeBudget: 120000, setBy: _id } },
+      { upsert: true, new: true }
+    );
 
     const curMonthSales  = monthlySales[0]?.total  || 0;
     const prevMonthSales = prevMonthlySales[0]?.total || 0;
     const salesGrowth    = prevMonthSales > 0 ? Math.round(((curMonthSales - prevMonthSales) / prevMonthSales) * 100) : null;
     const targetPct      = target?.salesTarget > 0 ? Math.round((curMonthSales / target.salesTarget) * 100) : null;
+    const monthlyPlanning = {
+      month: currentPlanning.month,
+      year: currentPlanning.year,
+      target: currentPlanning.target,
+      schemeBudget: currentPlanning.schemeBudget,
+      salesTillToday: curMonthSales,
+      achievement: currentPlanning.target ? Math.round((curMonthSales / currentPlanning.target) * 100) : 0,
+      balance: Math.max(0, (currentPlanning.target || 5000000) - curMonthSales),
+      expectedCollection: await Order.aggregate([
+        { $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled', 'rejected'] } } },
+        { $group: { _id: null, total: { $sum: '$grandTotal' } } },
+      ]).then(r => r[0]?.total || 0),
+    };
 
     const [provinceSales, topProducts, topDealers, salesTrend, collectionTrend, orderStatusBreakdown] = await Promise.all([
       Order.aggregate([
-        { $match: { ...scope, date: { $gte: monthStart }, status: { $nin: ['cancelled'] } } },
+        { $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled','rejected'] } } },
         { $group: { _id: '$province', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
         { $sort: { total: -1 } },
       ]),
       Order.aggregate([
-        { $match: { ...scope, date: { $gte: monthStart }, status: { $nin: ['cancelled'] } } },
+        { $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled','rejected'] } } },
         { $unwind: '$items' },
         { $group: { _id: '$items.productName', total: { $sum: '$items.grandTotal' }, qty: { $sum: '$items.quantity' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
       ]),
       Order.aggregate([
-        { $match: { ...scope, date: { $gte: monthStart }, status: { $nin: ['cancelled'] } } },
+        { $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled','rejected'] } } },
         { $group: { _id: '$dealer', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
         { $sort: { total: -1 } }, { $limit: 10 },
         { $lookup: { from: 'dealers', localField: '_id', foreignField: '_id', as: 'dealer' } },
         { $unwind: { path: '$dealer', preserveNullAndEmptyArrays: true } },
       ]),
       Order.aggregate([
-        { $match: { ...scope, date: { $gte: weekAgo }, status: { $nin: ['cancelled'] } } },
+        { $match: { ...scope, date: { $gte: weekAgo }, status: { $nin: ['cancelled','rejected'] } } },
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
         { $sort: { _id: 1 } },
       ]),
@@ -83,7 +115,7 @@ exports.getDashboard = async (req, res) => {
         { $sort: { _id: 1 } },
       ]),
       Order.aggregate([
-        { $match: { ...scope, date: { $gte: monthStart } } },
+        { $match: { ...scope, date: { $gte: last30Days } } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
     ]);
@@ -156,11 +188,12 @@ exports.getDashboard = async (req, res) => {
     }
 
     if (role === 'se') {
+      const seScope = { $or: [{ se: _id }, { createdBy: _id }] };
       const [totalSO, todayVisits, totalVisits, lastOrder, pendingCollection] = await Promise.all([
         User.countDocuments({ reportsTo: _id, role: 'so', status: 'active' }),
         Visit.countDocuments({ se: _id, date: { $gte: today } }),
         Visit.countDocuments({ se: _id, date: { $gte: monthStart } }),
-        Order.findOne({ se: _id }).sort('-createdAt').populate('dealer', 'dealerName').lean(),
+        Order.findOne(seScope).sort('-createdAt').populate('dealer', 'dealerName').lean(),
         Dealer.aggregate([{ $match: { se: _id } }, { $group: { _id: null, total: { $sum: '$outstandingAmount' } } }]),
       ]);
       extras = { totalSO, todayVisits, totalVisits, lastOrder, pendingCollection: pendingCollection[0]?.total || 0 };
@@ -191,6 +224,7 @@ exports.getDashboard = async (req, res) => {
         salesGrowth, targetPct,
         target: target || null,
         provinceSales, topProducts, topDealers, salesTrend, collectionTrend, orderStatusBreakdown,
+        monthlyPlanning,
         ...extras,
       },
     });

@@ -31,6 +31,7 @@ app.use('/api/dealer-portal', require('./routes/dealerPortal'));
 try { app.use('/api/salespersons', require('./routes/salespersons')); } catch {}
 try { app.use('/api/lifting',      require('./routes/lifting'));      } catch {}
 try { app.use('/api/targets',      require('./routes/targets'));      } catch {}
+try { app.use('/api/monthly-planning', require('./routes/monthlyPlanning')); } catch {}
 try { app.use('/api/notifications',require('./routes/notifications'));} catch {}
 
 app.get('/api/health', (req, res) => res.json({ success: true, message: 'SFA API running', time: new Date() }));

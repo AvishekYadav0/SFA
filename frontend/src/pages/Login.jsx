@@ -41,22 +41,22 @@ export default function Login() {
       <div className="w-full max-w-md">
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl mb-4">
-            <FiTrendingUp className="text-white text-3xl" />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl mb-3">
+            <FiTrendingUp className="text-white text-2xl" />
           </div>
-          <h1 className="text-3xl font-bold text-white">SFA System</h1>
-          <p className="text-blue-200 mt-1">Sales Force Automation</p>
+          <h1 className="text-2xl font-bold text-white">SFA System</h1>
+          <p className="text-blue-200 mt-1 text-sm">Sales Force Automation</p>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/20 shadow-2xl">
-          <h2 className="text-xl font-bold text-white mb-1">Welcome Back!</h2>
-          <p className="text-blue-200 text-sm mb-6">Sign in to your account to continue</p>
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 sm:p-8 border border-white/20 shadow-2xl">
+          <h2 className="text-lg font-bold text-white mb-1">Welcome Back!</h2>
+          <p className="text-blue-200 text-sm mb-5">Sign in to your account to continue</p>
 
           {/* Role Selector */}
-          <div className="mb-6">
-            <p className="text-sm font-medium text-blue-100 mb-3">I am signing in as</p>
-            <div className="grid grid-cols-3 gap-2">
+          <div className="mb-5">
+            <p className="text-xs font-medium text-blue-100 mb-2">I am signing in as</p>
+            <div className="grid grid-cols-4 gap-1.5">
               {[
                 { value: 'admin',  label: 'Admin',  icon: FiShield },
                 { value: 'nsm',    label: 'NSM',    icon: FiShield },
@@ -67,7 +67,7 @@ export default function Login() {
                 { value: 'dealer', label: 'Dealer', icon: FiUser },
               ].map(({ value, label, icon: Icon }) => (
                 <label key={value}
-                  className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 cursor-pointer transition-all ${
                     role === value
                       ? 'border-white bg-white/20 text-white'
                       : 'border-white/20 text-blue-200 hover:border-white/40'
@@ -75,13 +75,8 @@ export default function Login() {
                   <input type="radio" name="role" value={value}
                     checked={role === value} onChange={() => setRole(value)}
                     className="sr-only" />
-                  <Icon className="text-sm flex-shrink-0" />
-                  <span className="font-medium text-xs">{label}</span>
-                  <div className={`ml-auto w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                    role === value ? 'border-white' : 'border-white/40'
-                  }`}>
-                    {role === value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
+                  <Icon className="text-sm" />
+                  <span className="font-medium text-[10px] leading-none">{label}</span>
                 </label>
               ))}
             </div>

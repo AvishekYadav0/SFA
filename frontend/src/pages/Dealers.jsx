@@ -142,7 +142,7 @@ export default function Dealers() {
       creditLimit: 0,
       paymentType: 'credit',
       creditDays: 0,
-      outstandingAmount: 0,
+      openingOutstanding: 0,
       openingBalanceDate: '',
       creditStatus: 'allowed',
     });
@@ -152,6 +152,7 @@ export default function Dealers() {
   const openEdit = (d) => {
     reset({
       ...d,
+      openingOutstanding: d.openingBalance || d.originalOpeningOutstanding || d.openingOutstanding || 0,
       openingBalanceDate: d.openingBalanceDate
         ? new Date(d.openingBalanceDate).toISOString().slice(0, 10)
         : '',
@@ -161,11 +162,17 @@ export default function Dealers() {
 
   const onSubmit = async (data) => {
     try {
-      if (modal.data) await dealerService.update(modal.data._id, data);
-      else await dealerService.create(data);
+      if (modal.data) {
+        const res = await dealerService.update(modal.data._id, data);
+        // Immediately update local state with returned data (includes recalculated outstanding)
+        const updated = res.data.data;
+        setAllData(prev => prev.map(d => d._id === updated._id ? updated : d));
+      } else {
+        await dealerService.create(data);
+      }
       toast.success(modal.data ? 'Dealer updated!' : 'Dealer added!');
       setModal({ open: false, data: null, province: '' });
-      fetchAll();
+      fetchAll(); // full refresh to ensure consistency
     } catch (err) { toast.error(err.response?.data?.message || 'Error saving dealer'); }
   };
 
@@ -230,7 +237,7 @@ export default function Dealers() {
                     <th>PAN</th>
                     <th>NID</th>
                     <th>Credit Limit</th>
-                    <th>Opening Bal.</th>
+                    <th>Outstanding</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -262,7 +269,7 @@ export default function Dealers() {
                       <td className="text-slate-500">{d.panNumber || '—'}</td>
                       <td className="text-slate-500">{d.nidNumber || '—'}</td>
                       <td>{formatCurrency(d.creditLimit)}</td>
-                      <td>{formatCurrency(d.openingBalance)}</td>
+                      <td className="font-semibold text-red-600">{formatCurrency(d.outstandingAmount || 0)}</td>
                       <td><StatusBadge status={d.status} /></td>
                       <td onClick={event => event.stopPropagation()}>
                         <div className="flex gap-1.5">
@@ -606,7 +613,18 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
             </div>
             <div>
               <label className="label">Opening Outstanding (NPR)</label>
-              <input {...register('outstandingAmount', { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" />
+              <input {...register('openingOutstanding', {
+                valueAsNumber: true,
+                min: { value: 0, message: 'Opening Outstanding cannot be negative.' },
+                validate: (value) => {
+                  const amount = Number(value || 0);
+                  const limit = Number(document.querySelector('input[name="creditLimit"]')?.value || 0);
+                  if (amount > limit && Number(limit) >= 0) {
+                    return 'Opening Outstanding cannot exceed Credit Limit.';
+                  }
+                  return true;
+                },
+              })} type="number" min="0" step="0.01" className="input" />
             </div>
             <div>
               <label className="label">Opening Balance Date</label>
