@@ -50,14 +50,14 @@ export const Header = ({ onMenuClick }) => {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <button onClick={onMenuClick} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">
+    <header className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <button onClick={onMenuClick} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl flex-shrink-0">
           <FiMenu className="text-slate-600 dark:text-slate-400" />
         </button>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white truncate">{title}</h2>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         {badge && (
           <span className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge.cls}`}>
             {badge.label}

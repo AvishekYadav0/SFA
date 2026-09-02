@@ -28,15 +28,15 @@ export function Modal({ open, onClose, title, children }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose} // backdrop click closes
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+      onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-800 rounded-2xl shadow-xl"
-        onClick={(e) => e.stopPropagation()} // <-- THE FIX: stops clicks (incl. submit button) from bubbling to backdrop
+        className="w-full sm:max-w-2xl max-h-[92vh] sm:max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 dark:border-slate-700">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -45,7 +45,7 @@ export function Modal({ open, onClose, title, children }) {
             <FiX className="text-xl" />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6">{children}</div>
       </div>
     </div>
   );

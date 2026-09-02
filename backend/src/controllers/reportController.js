@@ -367,6 +367,237 @@ exports.staffHierarchy = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
+// ── Stock Reports ────────────────────────────────────────────────────────────
+const DealerStockTransaction  = require('../models/DealerStockTransaction');
+const DealerProductStockSetting = require('../models/DealerProductStockSetting');
+
+// Safe date filter for stock reports — handles empty strings and range param
+const buildStockDateFilter = (req) => {
+  const { startDate, endDate, range } = req.query;
+  const start = startDate && startDate.trim() ? new Date(startDate) : null;
+  let   end   = endDate   && endDate.trim()   ? new Date(endDate)   : null;
+  if (end) end.setHours(23, 59, 59, 999);
+
+  // If explicit dates given and valid, use them
+  if (start && !isNaN(start) && end && !isNaN(end)) return { $gte: start, $lte: end };
+  if (start && !isNaN(start)) return { $gte: start };
+  if (end   && !isNaN(end))   return { $lte: end };
+
+  // Fall back to range
+  if (!range || range === 'all') return null;
+  const now  = new Date();
+  const from = new Date(now);
+  if (range === 'day')   { from.setHours(0, 0, 0, 0); }
+  if (range === 'week')  { from.setDate(now.getDate() - now.getDay()); from.setHours(0, 0, 0, 0); }
+  if (range === 'month') { from.setDate(1); from.setHours(0, 0, 0, 0); }
+  if (range === 'year')  { from.setMonth(0, 1); from.setHours(0, 0, 0, 0); }
+  return { $gte: from, $lte: now };
+};
+
+const INCOMING_TX = ['OPENING', 'COMPANY_DISPATCH', 'TRANSFER_IN', 'ADJUSTMENT_IN'];
+const OUTGOING_TX = ['DEALER_SALE', 'TRANSFER_OUT', 'DAMAGE', 'EXPIRED', 'SAMPLE', 'PROMOTIONAL', 'RETURN_TO_COMPANY', 'ADJUSTMENT_OUT'];
+
+const stockAccumulators = () => ({
+  openingStock:    { $sum: { $cond: [{ $eq: ['$transactionType', 'OPENING']           }, '$quantity', 0] } },
+  companyDispatch: { $sum: { $cond: [{ $eq: ['$transactionType', 'COMPANY_DISPATCH']  }, '$quantity', 0] } },
+  transferIn:      { $sum: { $cond: [{ $eq: ['$transactionType', 'TRANSFER_IN']       }, '$quantity', 0] } },
+  adjustmentIn:    { $sum: { $cond: [{ $eq: ['$transactionType', 'ADJUSTMENT_IN']     }, '$quantity', 0] } },
+  dealerSales:     { $sum: { $cond: [{ $eq: ['$transactionType', 'DEALER_SALE']       }, '$quantity', 0] } },
+  transferOut:     { $sum: { $cond: [{ $eq: ['$transactionType', 'TRANSFER_OUT']      }, '$quantity', 0] } },
+  damage:          { $sum: { $cond: [{ $eq: ['$transactionType', 'DAMAGE']            }, '$quantity', 0] } },
+  expired:         { $sum: { $cond: [{ $eq: ['$transactionType', 'EXPIRED']           }, '$quantity', 0] } },
+  sample:          { $sum: { $cond: [{ $eq: ['$transactionType', 'SAMPLE']            }, '$quantity', 0] } },
+  promotional:     { $sum: { $cond: [{ $eq: ['$transactionType', 'PROMOTIONAL']       }, '$quantity', 0] } },
+  returnToCompany: { $sum: { $cond: [{ $eq: ['$transactionType', 'RETURN_TO_COMPANY'] }, '$quantity', 0] } },
+  adjustmentOut:   { $sum: { $cond: [{ $eq: ['$transactionType', 'ADJUSTMENT_OUT']    }, '$quantity', 0] } },
+});
+
+const closingStockExpr = {
+  $subtract: [
+    { $add: ['$openingStock', '$companyDispatch', '$transferIn', '$adjustmentIn'] },
+    { $add: ['$dealerSales', '$transferOut', '$damage', '$expired', '$sample', '$promotional', '$returnToCompany', '$adjustmentOut'] },
+  ],
+};
+
+// GET /api/reports/dealer-stock  — current closing stock per dealer+product
+exports.dealerStockReport = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const match = {};
+    if (req.user.role === 'dealer' && req.user.linkedDealer)
+      match.dealer = req.user.linkedDealer;
+    else if (req.query.dealerId && mongoose.isValidObjectId(req.query.dealerId))
+      match.dealer = new mongoose.Types.ObjectId(req.query.dealerId);
+    if (req.query.productId && mongoose.isValidObjectId(req.query.productId))
+      match.product = new mongoose.Types.ObjectId(req.query.productId);
+
+    const data = await DealerStockTransaction.aggregate([
+      { $match: match },
+      { $group: { _id: { dealer: '$dealer', product: '$product' }, ...stockAccumulators() } },
+      { $addFields: { closingStock: closingStockExpr } },
+      { $lookup: { from: 'dealers',  localField: '_id.dealer',  foreignField: '_id', as: '_dealer'  } },
+      { $lookup: { from: 'products', localField: '_id.product', foreignField: '_id', as: '_product' } },
+      { $unwind: { path: '$_dealer',  preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$_product', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        _id: 0,
+        dealerId:        '$_id.dealer',
+        productId:       '$_id.product',
+        dealerName:      '$_dealer.dealerName',
+        area:            '$_dealer.area',
+        province:        '$_dealer.province',
+        productName:     '$_product.productName',
+        openingStock: 1, companyDispatch: 1, transferIn: 1, adjustmentIn: 1,
+        dealerSales: 1,  transferOut: 1,    damage: 1,     expired: 1,
+        sample: 1,       promotional: 1,    returnToCompany: 1, adjustmentOut: 1,
+        closingStock: 1,
+      }},
+      { $sort: { dealerName: 1, productName: 1 } },
+    ]);
+
+    // Attach minimumStock from settings
+    const settings = await DealerProductStockSetting.find({}).lean();
+    const settingMap = {};
+    settings.forEach(s => { settingMap[`${s.dealer}_${s.product}`] = s.minimumStock; });
+
+    const result = data.map(row => {
+      const minStock = settingMap[`${row.dealerId}_${row.productId}`] ?? 0;
+      const closing  = row.closingStock;
+      const stockStatus = closing <= 0 ? 'Out of Stock' : closing <= minStock ? 'Low Stock' : 'Healthy';
+      return { ...row, minimumStock: minStock, stockStatus };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+// GET /api/reports/stock-movement  — transaction-level movement report
+exports.stockMovementReport = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const match = {};
+    if (req.user.role === 'dealer' && req.user.linkedDealer)
+      match.dealer = req.user.linkedDealer;
+    else if (req.query.dealerId && mongoose.isValidObjectId(req.query.dealerId))
+      match.dealer = new mongoose.Types.ObjectId(req.query.dealerId);
+    if (req.query.productId && mongoose.isValidObjectId(req.query.productId))
+      match.product = new mongoose.Types.ObjectId(req.query.productId);
+    if (req.query.transactionType) match.transactionType = req.query.transactionType;
+    const dateMatch = buildStockDateFilter(req);
+    if (dateMatch) match.transactionDate = dateMatch;
+    const data = await DealerStockTransaction.find(match)
+      .populate('dealer',    'dealerName area province')
+      .populate('product',   'productName')
+      .populate('createdBy', 'name')
+      .sort({ transactionDate: -1 })
+      .lean();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+// GET /api/reports/low-stock  — products below minimumStock
+exports.lowStockReport = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const allTx = await DealerStockTransaction.aggregate([
+      { $group: { _id: { dealer: '$dealer', product: '$product' }, ...stockAccumulators() } },
+      { $addFields: { closingStock: closingStockExpr } },
+    ]);
+
+    const settings = await DealerProductStockSetting.find({ minimumStock: { $gt: 0 } }).lean();
+    const settingMap = {};
+    settings.forEach(s => { settingMap[`${s.dealer}_${s.product}`] = s.minimumStock; });
+
+    const stockMap = {};
+    allTx.forEach(r => { stockMap[`${r._id.dealer}_${r._id.product}`] = { ...r._id, closingStock: r.closingStock }; });
+
+    const lowItems = settings
+      .map(s => {
+        const key     = `${s.dealer}_${s.product}`;
+        const closing = stockMap[key]?.closingStock ?? 0;
+        return { dealer: s.dealer, product: s.product, minimumStock: s.minimumStock, closingStock: closing };
+      })
+      .filter(r => r.closingStock <= r.minimumStock);
+
+    if (!lowItems.length) return res.json({ success: true, data: [] });
+
+    const dealerIds  = [...new Set(lowItems.map(r => r.dealer))];
+    const productIds = [...new Set(lowItems.map(r => r.product))];
+    const [dealers, products] = await Promise.all([
+      Dealer.find({ _id: { $in: dealerIds } }).select('dealerName area province').lean(),
+      require('../models/Product').find({ _id: { $in: productIds } }).select('productName').lean(),
+    ]);
+    const dMap = Object.fromEntries(dealers.map(d  => [String(d._id),  d]));
+    const pMap = Object.fromEntries(products.map(p => [String(p._id),  p]));
+
+    const result = lowItems.map(r => ({
+      dealerId:    r.dealer,
+      productId:   r.product,
+      dealerName:  dMap[String(r.dealer)]?.dealerName  || '—',
+      area:        dMap[String(r.dealer)]?.area        || '—',
+      province:    dMap[String(r.dealer)]?.province    || '—',
+      productName: pMap[String(r.product)]?.productName || '—',
+      minimumStock: r.minimumStock,
+      closingStock: r.closingStock,
+      stockStatus:  r.closingStock <= 0 ? 'Out of Stock' : 'Low Stock',
+    }));
+
+    res.json({ success: true, data: result });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+// GET /api/reports/dealer-sales-stock  — dealer sales transactions
+exports.dealerSalesStockReport = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const match = { transactionType: 'DEALER_SALE' };
+
+    // Scope to dealer's own data if role is dealer
+    if (req.user.role === 'dealer' && req.user.linkedDealer)
+      match.dealer = req.user.linkedDealer;
+    else if (req.query.dealerId && mongoose.isValidObjectId(req.query.dealerId))
+      match.dealer = new mongoose.Types.ObjectId(req.query.dealerId);
+
+    if (req.query.productId && mongoose.isValidObjectId(req.query.productId))
+      match.product = new mongoose.Types.ObjectId(req.query.productId);
+
+    const dateMatch = buildStockDateFilter(req);
+    if (dateMatch) match.transactionDate = dateMatch;
+
+    const data = await DealerStockTransaction.find(match)
+      .populate('dealer',    'dealerName area province')
+      .populate('product',   'productName')
+      .populate('createdBy', 'name')
+      .sort({ transactionDate: -1 })
+      .lean();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+// GET /api/reports/damage-expiry  — damage/expired/sample transactions
+exports.damageExpiryReport = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const DAMAGE_TYPES = ['DAMAGE', 'EXPIRED', 'SAMPLE', 'PROMOTIONAL', 'RETURN_TO_COMPANY'];
+    const match = { transactionType: { $in: DAMAGE_TYPES } };
+    if (req.user.role === 'dealer' && req.user.linkedDealer)
+      match.dealer = req.user.linkedDealer;
+    else if (req.query.dealerId && mongoose.isValidObjectId(req.query.dealerId))
+      match.dealer = new mongoose.Types.ObjectId(req.query.dealerId);
+    if (req.query.transactionType && DAMAGE_TYPES.includes(req.query.transactionType))
+      match.transactionType = req.query.transactionType;
+    const dateMatch = buildStockDateFilter(req);
+    if (dateMatch) match.transactionDate = dateMatch;
+    const data = await DealerStockTransaction.find(match)
+      .populate('dealer',    'dealerName area province')
+      .populate('product',   'productName')
+      .populate('createdBy', 'name')
+      .sort({ transactionDate: -1 })
+      .lean();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
 exports.dealerStats = async (req, res) => {
   try {
     const { id } = req.params;

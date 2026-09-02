@@ -5,6 +5,7 @@ const Visit      = require('../models/Visit');
 const User       = require('../models/User');
 const Target     = require('../models/Target');
 const MonthlyPlanning = require('../models/MonthlyPlanning');
+const DealerStockTransaction = require('../models/DealerStockTransaction');
 const { scopeFilter } = require('../middleware/auth');
 
 // Dealer queries need the 'dealer' model hint so scopeFilter handles the so-array correctly
@@ -44,6 +45,7 @@ exports.getDashboard = async (req, res) => {
       totalOutstanding,
       prevMonthlySales,
       deliveredOrders, cancelledOrders,
+      stockTotals,
     ] = await Promise.all([
       Order.aggregate([{ $match: { ...scope, date: { $gte: today }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Order.aggregate([{ $match: { ...scope, date: { $gte: last30Days }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
@@ -58,6 +60,14 @@ exports.getDashboard = async (req, res) => {
       Order.aggregate([{ $match: { ...scope, date: { $gte: prevMonthStart, $lte: prevMonthEnd }, status: { $nin: ['cancelled','rejected'] } } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Order.countDocuments({ ...scope, status: 'delivered' }),
       Order.countDocuments({ ...scope, status: 'cancelled' }),
+      DealerStockTransaction.aggregate([
+        { $group: {
+          _id: null,
+          incoming: { $sum: { $cond: [{ $in: ['$transactionType', ['OPENING','COMPANY_DISPATCH','TRANSFER_IN','ADJUSTMENT_IN']] }, '$quantity', 0] } },
+          outgoing: { $sum: { $cond: [{ $in: ['$transactionType', ['DEALER_SALE','TRANSFER_OUT','DAMAGE','EXPIRED','SAMPLE','PROMOTIONAL','RETURN_TO_COMPANY','ADJUSTMENT_OUT']] }, '$quantity', 0] } },
+        }},
+        { $project: { totalDealerStock: { $subtract: ['$incoming', '$outgoing'] } } },
+      ]),
     ]);
 
     const target = await Target.findOne({ user: _id, month: now.getMonth() + 1, year: now.getFullYear() });
@@ -221,6 +231,7 @@ exports.getDashboard = async (req, res) => {
         totalDealers, activeDealers, pendingOrders, totalOrders,
         deliveredOrders, cancelledOrders,
         totalOutstanding:  totalOutstanding[0]?.total  || 0,
+        totalDealerStock:  stockTotals[0]?.totalDealerStock || 0,
         salesGrowth, targetPct,
         target: target || null,
         provinceSales, topProducts, topDealers, salesTrend, collectionTrend, orderStatusBreakdown,

@@ -87,14 +87,14 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Team Management</h1>
           <p className="text-sm text-slate-500 mt-1">{total} total members</p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search..." />
-          <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }} className="input w-32 text-sm">
+          <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }} className="input w-28 text-sm">
             <option value="">All Roles</option>
             {ROLES.map(r => <option key={r} value={r}>{r.toUpperCase()}</option>)}
           </select>

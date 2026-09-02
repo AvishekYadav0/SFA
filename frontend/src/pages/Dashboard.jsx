@@ -101,6 +101,7 @@ export default function Dashboard() {
         <KPI icon={FiShoppingBag} label="Total Dealers"      value={fmtN(data.totalDealers)}       sub={`${data.activeDealers} active`} color="orange" onClick={() => navigate('/dealers')} />
         <KPI icon={FiClipboard}   label="Pending Orders"     value={fmtN(data.pendingOrders)}      color="yellow" onClick={() => navigate('/orders')} />
         <KPI icon={FiClipboard}   label="Total Orders"       value={fmtN(data.totalOrders)}        color="teal"   onClick={() => navigate('/orders')} />
+        <KPI icon={FiPackage}     label="Dealer Stock"       value={`${fmtN(data.totalDealerStock)} Units`} color="teal" onClick={() => navigate('/stock-status')} />
 
         {(role === 'nsm' || role === 'admin') && <>
           <KPI icon={FiUsers} label="Total RSM" value={fmtN(data.totalRSM)} color="blue"   onClick={() => navigate('/users')} />

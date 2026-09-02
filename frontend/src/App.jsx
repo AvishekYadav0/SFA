@@ -27,6 +27,7 @@ const Settings      = lazy(() => import('./pages/Settings'));
 const Lifting       = lazy(() => import('./pages/Lifting'));
 const Pipeline      = lazy(() => import('./pages/Pipeline'));
 const Sales         = lazy(() => import('./pages/Sales'));
+const StockStatus   = lazy(() => import('./pages/StockStatus'));
 const DealerPortal  = lazy(() => import('./pages/DealerPortal'));
 const DealerDetail  = lazy(() => import('./pages/DealerDetail'));
 
@@ -76,6 +77,7 @@ const AppRoutes = () => {
           <Route path="/orders"       element={<Orders />} />
           <Route path="/pipeline"     element={<RoleRoute roles={['nsm','rsm','asm','admin']}><Pipeline /></RoleRoute>} />
           <Route path="/sales"        element={<Sales />} />
+          <Route path="/stock-status"  element={<StockStatus />} />
           <Route path="/collections"  element={<Collections />} />
           <Route path="/collection-plans" element={<CollectionPlans />} />
           <Route path="/monthly-planning" element={<MonthlyPlanning />} />

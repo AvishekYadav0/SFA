@@ -25,6 +25,7 @@ app.use('/api/collection-plans', require('./routes/collectionPlans'));
 app.use('/api/visits',       visits);
 app.use('/api/dashboard',    dashboard);
 app.use('/api/reports',      reports);
+app.use('/api/stock-status', require('./routes/stockStatus'));
 app.use('/api/dealer-portal', require('./routes/dealerPortal'));
 
 // Keep old routes working if they exist

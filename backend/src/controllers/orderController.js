@@ -128,6 +128,60 @@ exports.updateStatus = async (req, res) => {
     const data = await Order.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
 
+    // ── DELIVERED → create COMPANY_DISPATCH stock transactions ────────────────
+    if (status === 'delivered') {
+      const DealerStockTransaction = require('../models/DealerStockTransaction');
+      for (const item of data.items) {
+        const exists = await DealerStockTransaction.findOne({
+          dealer:          data.dealer,
+          product:         item.product,
+          transactionType: 'COMPANY_DISPATCH',
+          referenceType:   'Order',
+          referenceId:     data._id,
+        }).select('_id').lean();
+        if (!exists) {
+          await DealerStockTransaction.create({
+            dealer:          data.dealer,
+            product:         item.product,
+            transactionDate: new Date(),
+            transactionType: 'COMPANY_DISPATCH',
+            quantity:        item.quantity,
+            referenceType:   'Order',
+            referenceId:     data._id,
+            remarks:         `Auto: Order ${data.orderNumber} delivered`,
+            createdBy:       req.user._id,
+          });
+        }
+      }
+    }
+
+    // ── REVERSAL → create RETURN_TO_COMPANY to offset COMPANY_DISPATCH ────────
+    if ((status === 'cancelled' || status === 'rejected') && data.deliveredAt) {
+      const DealerStockTransaction = require('../models/DealerStockTransaction');
+      for (const item of data.items) {
+        const reversalExists = await DealerStockTransaction.findOne({
+          dealer:          data.dealer,
+          product:         item.product,
+          transactionType: 'RETURN_TO_COMPANY',
+          referenceType:   'Order',
+          referenceId:     data._id,
+        }).select('_id').lean();
+        if (!reversalExists) {
+          await DealerStockTransaction.create({
+            dealer:          data.dealer,
+            product:         item.product,
+            transactionDate: new Date(),
+            transactionType: 'RETURN_TO_COMPANY',
+            quantity:        item.quantity,
+            referenceType:   'Order',
+            referenceId:     data._id,
+            remarks:         `Reversal: Order ${data.orderNumber} ${status} after delivery`,
+            createdBy:       req.user._id,
+          });
+        }
+      }
+    }
+
     if (status === 'completed') {
       const Sale = require('../models/Sale');
       const existingSale = await Sale.findOne({ order: data._id }).select('_id');

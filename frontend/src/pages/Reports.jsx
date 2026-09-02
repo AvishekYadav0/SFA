@@ -268,9 +268,95 @@ const REPORT_CONFIGS = {
       { key: 'totalSales', label: 'Total Sales', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
     ],
   },
+  'dealer-stock': {
+    label: 'Dealer Stock Report',
+    fetch: (f) => reportService.dealerStock(f),
+    columns: [
+      { key: 'dealerName',     label: 'Dealer',          className: 'font-medium' },
+      { key: 'area',           label: 'Area' },
+      { key: 'province',       label: 'Province' },
+      { key: 'productName',    label: 'Product',         className: 'font-medium' },
+      { key: 'openingStock',   label: 'Opening',         sum: true },
+      { key: 'companyDispatch',label: 'Dispatch',        sum: true },
+      { key: 'dealerSales',    label: 'Sales',           sum: true, className: 'text-green-600 font-medium' },
+      { key: 'closingStock',   label: 'Closing',         sum: true, className: 'font-bold text-blue-600' },
+      { key: 'minimumStock',   label: 'Min Stock' },
+      { key: 'stockStatus',    label: 'Status',
+        render: (r) => {
+          const c = r.stockStatus === 'Healthy' ? 'bg-green-100 text-green-700' : r.stockStatus === 'Low Stock' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700';
+          return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c}`}>{r.stockStatus}</span>;
+        },
+        exportValue: (r) => r.stockStatus,
+      },
+    ],
+  },
+  'stock-movement': {
+    label: 'Stock Movement Report',
+    fetch: (f) => reportService.stockMovement(f),
+    dateFilter: true,
+    columns: [
+      { key: 'transactionDate', label: 'Date',    format: 'date' },
+      { key: 'dealer.dealerName', label: 'Dealer', exportValue: (r) => r.dealer?.dealerName },
+      { key: 'product.productName', label: 'Product', exportValue: (r) => r.product?.productName },
+      { key: 'transactionType', label: 'Type',    className: 'font-medium' },
+      { key: 'quantity',        label: 'Qty',     sum: true, className: 'font-medium' },
+      { key: 'remarks',         label: 'Remarks', exportValue: (r) => r.remarks || r.reason || '' },
+      { key: 'createdBy.name',  label: 'By',      exportValue: (r) => r.createdBy?.name },
+    ],
+  },
+  'low-stock': {
+    label: 'Low Stock Report',
+    fetch: () => reportService.lowStock(),
+    columns: [
+      { key: 'dealerName',   label: 'Dealer',      className: 'font-medium' },
+      { key: 'area',         label: 'Area' },
+      { key: 'province',     label: 'Province' },
+      { key: 'productName',  label: 'Product',     className: 'font-medium' },
+      { key: 'minimumStock', label: 'Min Stock' },
+      { key: 'closingStock', label: 'Current Stock', className: 'font-bold text-red-600' },
+      { key: 'stockStatus',  label: 'Status',
+        render: (r) => {
+          const c = r.stockStatus === 'Out of Stock' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
+          return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c}`}>{r.stockStatus}</span>;
+        },
+        exportValue: (r) => r.stockStatus,
+      },
+    ],
+  },
+  'dealer-sales-stock': {
+    label: 'Dealer Sales Report',
+    fetch: (f) => reportService.dealerSalesStock(f),
+    dateFilter: true,
+    columns: [
+      { key: 'transactionDate',       label: 'Date',    format: 'date' },
+      { key: 'dealer.dealerName',     label: 'Dealer',  exportValue: (r) => r.dealer?.dealerName },
+      { key: 'dealer.area',           label: 'Area',    exportValue: (r) => r.dealer?.area },
+      { key: 'product.productName',   label: 'Product', exportValue: (r) => r.product?.productName },
+      { key: 'quantity',              label: 'Qty Sold', sum: true, className: 'font-bold text-green-600' },
+      { key: 'remarks',               label: 'Remarks' },
+      { key: 'createdBy.name',        label: 'Recorded By', exportValue: (r) => r.createdBy?.name },
+    ],
+  },
+  'damage-expiry': {
+    label: 'Damage / Expiry Report',
+    fetch: (f) => reportService.damageExpiry(f),
+    dateFilter: true,
+    columns: [
+      { key: 'transactionDate',       label: 'Date',    format: 'date' },
+      { key: 'dealer.dealerName',     label: 'Dealer',  exportValue: (r) => r.dealer?.dealerName },
+      { key: 'product.productName',   label: 'Product', exportValue: (r) => r.product?.productName },
+      { key: 'transactionType',       label: 'Type',    className: 'font-medium text-red-600' },
+      { key: 'quantity',              label: 'Qty',     sum: true, className: 'font-bold text-red-600' },
+      { key: 'reason',                label: 'Reason' },
+      { key: 'remarks',               label: 'Remarks' },
+      { key: 'createdBy.name',        label: 'By',      exportValue: (r) => r.createdBy?.name },
+    ],
+  },
 };
 
 const REPORT_TYPES = Object.entries(REPORT_CONFIGS).map(([id, c]) => ({ id, label: c.label }));
+
+const STOCK_REPORT_IDS = new Set(['dealer-stock','stock-movement','low-stock','dealer-sales-stock','damage-expiry']);
 
 const normalizeReportData = (reportId, payload) => {
   if (Array.isArray(payload)) {
@@ -427,10 +513,15 @@ export default function Reports() {
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const res = await config.fetch(filters);
-      const nextData = normalizeReportData(activeReport, res.data.data);
+      // Strip empty/undefined values so backend doesn't receive empty strings
+      const cleanFilters = Object.fromEntries(
+        Object.entries(filters).filter(([, v]) => v !== '' && v != null)
+      );
+      const res = await config.fetch(cleanFilters);
+      const payload = res.data?.data ?? res.data;
+      const nextData = normalizeReportData(activeReport, payload);
       setData(nextData);
-      if (!nextData.length) toast('No records found for selected filters', { icon: 'ℹ️' });
+      if (!nextData.length) toast('No records found for selected filters', { icon: 'ℹ\uFE0F' });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load report');
     } finally {
@@ -439,32 +530,35 @@ export default function Reports() {
   };
 
   useEffect(() => {
+    // Stock reports require explicit Generate click — don't auto-fetch on tab switch
+    if (STOCK_REPORT_IDS.has(activeReport)) return;
     fetchReport();
   }, [activeReport]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Reports</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">Reports</h1>
           <p className="text-sm text-slate-500 mt-1">Generate and export business reports</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" onClick={() => exportExcel(data, config.columns, activeReport)} disabled={!data.length}>
-            <FiDownload />Export Excel
+            <FiDownload />Export
           </button>
           <button className="btn-secondary" onClick={() => window.print()} disabled={!data.length}>
             <FiPrinter />Print
           </button>
           <button className="btn-secondary" onClick={() => shareWhatsApp(config.label, data, config.columns)} disabled={!data.length}>
-            <FiShare2 />WhatsApp
+            <FiShare2 />Share
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         <div className="card p-3 space-y-1 h-fit">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 mb-3">Report Types</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1">
           {REPORT_TYPES.map((r) => (
             <button
               key={r.id}
@@ -472,26 +566,27 @@ export default function Reports() {
                 setActiveReport(r.id);
                 setData([]);
               }}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              className={`w-full text-left px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
                 activeReport === r.id ? 'bg-primary-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
             >
               {r.label}
             </button>
           ))}
+          </div>
         </div>
 
         <div className="lg:col-span-3 space-y-4">
           <div className="card">
             <div className="flex flex-wrap items-end gap-4">
               {config.dateFilter && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {RANGE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setFilters((f) => ({ ...f, range: option.value }))}
-                      className={`px-3 py-2 text-sm rounded-xl border transition ${filters.range === option.value ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-300'}`}
+                      className={`px-2.5 py-1.5 text-xs rounded-xl border transition ${filters.range === option.value ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-300'}`}
                     >
                       {option.label}
                     </button>

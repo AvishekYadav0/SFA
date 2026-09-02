@@ -724,7 +724,7 @@ export default function Orders() {
           </button>
           <div className="flex items-center gap-2">
             <FiMapPin className="text-primary-600" size={18} />
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{provinceLabel}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{provinceLabel}</h1>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">{ordersInProvince.length} order{ordersInProvince.length === 1 ? '' : 's'}</p>
         </div>

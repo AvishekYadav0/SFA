@@ -94,6 +94,11 @@ export const reportService = {
   orderStatus:      (params) => api.get('/reports/order-status',         { params }),
   staffHierarchy:   (params) => api.get('/reports/staff-hierarchy',      { params }),
   dealerStats:       (id)     => api.get(`/reports/dealer/${id}/stats`),
+  dealerStock:       (params) => api.get('/reports/dealer-stock',       { params }),
+  stockMovement:     (params) => api.get('/reports/stock-movement',     { params }),
+  lowStock:          (params) => api.get('/reports/low-stock',          { params }),
+  dealerSalesStock:  (params) => api.get('/reports/dealer-sales-stock', { params }),
+  damageExpiry:      (params) => api.get('/reports/damage-expiry',      { params }),
 };
 
 export const targetService = {
@@ -114,6 +119,14 @@ export const dealerPortalService = {
   getProfile:  ()       => api.get('/dealer-portal/profile'),
   getOrders:   (params) => api.get('/dealer-portal/orders',   { params }),
   getPayments: (params) => api.get('/dealer-portal/payments', { params }),
+};
+
+export const stockStatusService = {
+  getAll:        (params) => api.get('/stock-status', { params }),
+  getLedger:     (dealerId, productId, params) => api.get(`/stock-status/dealer/${dealerId}/product/${productId}/ledger`, { params }),
+  recordSales:   (data)   => api.post('/stock-status/dealer-sales', data),
+  createAdjust:  (data)   => api.post('/stock-status/adjustments', data),
+  createTransfer:(data)   => api.post('/stock-status/transfers', data),
 };
 
 // legacy compat

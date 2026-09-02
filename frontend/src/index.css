@@ -5,6 +5,7 @@
 @layer base {
   body {
     @apply bg-bg text-secondary font-sans antialiased;
+    overflow-x: hidden;
   }
 }
 
@@ -12,7 +13,7 @@
 
   /* ── Card ─────────────────────────────────────────── */
   .card {
-    @apply bg-white rounded-2xl shadow-sm border border-slate-100 p-6;
+    @apply bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-6;
   }
   .dark .card {
     background-color: #1e293b;
@@ -21,7 +22,7 @@
 
   /* ── Buttons ──────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200;
+    @apply inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2 rounded-xl font-medium text-sm transition-all duration-200;
     opacity: 1;
     cursor: pointer;
   }
@@ -84,6 +85,7 @@
   /* ── Table ────────────────────────────────────────── */
   .table-wrapper {
     @apply overflow-x-auto rounded-2xl border border-slate-100;
+    -webkit-overflow-scrolling: touch;
   }
   .dark .table-wrapper { border-color: #334155; }
 
@@ -93,13 +95,13 @@
   .dark .table thead { background-color: #1e293b; }
 
   .table th {
-    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider;
+    @apply px-3 py-2.5 sm:px-4 sm:py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap;
     color: #64748b;
   }
   .dark .table th { color: #94a3b8; }
 
   .table td {
-    @apply px-4 py-3;
+    @apply px-3 py-2.5 sm:px-4 sm:py-3;
     color: #374151;
     border-top: 1px solid #f8fafc;
   }

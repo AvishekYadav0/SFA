@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { dealerService } from '../services';
+import { dealerService, stockStatusService, reportService } from '../services';
 import { PageLoader } from '../components/common/Spinner';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
-import { FiArrowLeft, FiDollarSign, FiFileText, FiBookOpen, FiClock } from 'react-icons/fi';
+import { FiArrowLeft, FiDollarSign, FiFileText, FiBookOpen, FiClock, FiPackage, FiExternalLink } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-const TABS = ['Overview', 'Collections', 'Invoices', 'Ledger'];
+const TABS = ['Overview', 'Collections', 'Invoices', 'Ledger', 'Stock'];
 
 export default function DealerDetail() {
   const navigate = useNavigate();
@@ -15,6 +15,8 @@ export default function DealerDetail() {
   const [collections, setCollections] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [ledger, setLedger] = useState([]);
+  const [stock, setStock] = useState([]);
+  const [stockLoading, setStockLoading] = useState(false);
   const [tab, setTab] = useState('Overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,6 +53,16 @@ export default function DealerDetail() {
     load();
     return () => { cancelled = true; };
   }, [id]);
+
+  // Load stock when Stock tab is selected
+  useEffect(() => {
+    if (tab !== 'Stock' || stock.length > 0) return;
+    setStockLoading(true);
+    reportService.dealerStock({ dealerId: id })
+      .then(r => setStock(r.data?.data || []))
+      .catch(() => setStock([]))
+      .finally(() => setStockLoading(false));
+  }, [tab, id]);
 
   const summary = useMemo(() => ({
     outstanding:    Number(dealer?.outstandingAmount || 0),
@@ -236,6 +248,80 @@ export default function DealerDetail() {
                           <td>{entry.remarks || '—'}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'Stock' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-500">Current stock position for all products.</p>
+                <button
+                  onClick={() => navigate(`/stock-status?dealerId=${id}`)}
+                  className="btn-secondary text-xs flex items-center gap-1.5">
+                  <FiExternalLink className="text-xs" /> View Full Stock Status
+                </button>
+              </div>
+
+              {/* KPI summary */}
+              {stock.length > 0 && (() => {
+                const totalClosing  = stock.reduce((s, r) => s + (r.closingStock  || 0), 0);
+                const totalDispatch = stock.reduce((s, r) => s + (r.companyDispatch || 0), 0);
+                const totalSales    = stock.reduce((s, r) => s + (r.dealerSales   || 0), 0);
+                const lowCount      = stock.filter(r => r.stockStatus !== 'Healthy').length;
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[['Current Stock', totalClosing + ' Units', 'text-blue-600'],
+                      ['This Month Dispatch', totalDispatch + ' Units', 'text-purple-600'],
+                      ['This Month Sales', totalSales + ' Units', 'text-green-600'],
+                      ['Low / Out of Stock', lowCount + ' Products', lowCount > 0 ? 'text-red-600' : 'text-slate-600'],
+                    ].map(([label, value, cls]) => (
+                      <div key={label} className="card p-3">
+                        <p className="text-xs text-slate-500">{label}</p>
+                        <p className={`text-lg font-bold mt-1 ${cls}`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {stockLoading ? (
+                <PageLoader />
+              ) : stock.length === 0 ? (
+                <div className="text-sm text-slate-500 py-8 text-center">No stock transactions found for this dealer.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th className="text-right">Opening</th>
+                        <th className="text-right">Received</th>
+                        <th className="text-right">Sold</th>
+                        <th className="text-right">Adjustments</th>
+                        <th className="text-right">Closing</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stock.map((row, i) => {
+                        const adjustments = (row.adjustmentIn || 0) - (row.adjustmentOut || 0) - (row.damage || 0) - (row.expired || 0) - (row.sample || 0) - (row.promotional || 0) - (row.returnToCompany || 0);
+                        const badgeCls = row.stockStatus === 'Healthy' ? 'bg-green-100 text-green-700' : row.stockStatus === 'Low Stock' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700';
+                        return (
+                          <tr key={i}>
+                            <td className="font-medium">{row.productName || '—'}</td>
+                            <td className="text-right">{row.openingStock || 0}</td>
+                            <td className="text-right">{row.companyDispatch || 0}</td>
+                            <td className="text-right text-green-600 font-medium">{row.dealerSales || 0}</td>
+                            <td className="text-right text-orange-500">{adjustments}</td>
+                            <td className="text-right font-bold text-blue-600">{row.closingStock || 0}</td>
+                            <td><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${badgeCls}`}>{row.stockStatus}</span></td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

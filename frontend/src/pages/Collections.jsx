@@ -346,7 +346,7 @@ export default function Collections() {
         </div>
         {canManage && (
           <button className="btn-primary" onClick={openCreate}>
-            <FiPlus className="inline-block mr-2" /> New Collection
+            <FiPlus /> New Collection
           </button>
         )}
       </div>
