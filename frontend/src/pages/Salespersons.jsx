@@ -125,7 +125,7 @@ export default function Salespersons() {
             </div>
           </div>
           <button className="btn-primary" onClick={() => openCreate(selectedProvince)}>
-            <FiPlus /> Add Salesperson
+            <FiPlus /> <span className="hidden sm:inline">Add Salesperson</span>
           </button>
         </div>
 
@@ -138,52 +138,74 @@ export default function Salespersons() {
               <p className="text-sm mt-1">Click "Add Salesperson" to add one</p>
             </div>
           ) : (
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Employee ID</th>
-                    <th>Full Name</th>
-                    <th>Phone</th>
-                    <th>Area</th>
-                    <th>Designation</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {provinceData.map(sp => (
-                    <tr key={sp._id}>
-                      <td className="font-medium text-blue-600">{sp.employeeId}</td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
-                            <FiUser className="text-white text-xs" />
-                          </div>
-                          <span className="font-medium">{sp.fullName}</span>
+            <>
+              {/* Mobile cards */}
+              <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {provinceData.map(sp => (
+                  <div key={sp._id} className="p-4 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
+                          <FiUser className="text-white text-xs" />
                         </div>
-                      </td>
-                      <td>{sp.phone}</td>
-                      <td>{sp.area}</td>
-                      <td><span className="badge-info">{sp.designation}</span></td>
-                      <td><StatusBadge status={sp.status} /></td>
-                      <td>
-                        <div className="flex gap-1.5">
-                          <button onClick={() => openEdit(sp)}
-                            className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors">
-                            <FiEdit2 size={14} />
-                          </button>
-                          <button onClick={() => setConfirm({ open: true, id: sp._id })}
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500 transition-colors">
-                            <FiTrash2 size={14} />
-                          </button>
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-white text-sm">{sp.fullName}</p>
+                          <p className="text-xs text-blue-600">{sp.employeeId}</p>
                         </div>
-                      </td>
+                      </div>
+                      <StatusBadge status={sp.status} />
+                    </div>
+                    <p className="text-xs text-slate-500">{sp.phone} · {sp.area}</p>
+                    <p className="text-xs text-slate-400">{sp.designation}</p>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => openEdit(sp)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600"><FiEdit2 size={14} /></button>
+                      <button onClick={() => setConfirm({ open: true, id: sp._id })} className="p-1.5 hover:bg-red-50 rounded-lg text-red-500"><FiTrash2 size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop table */}
+              <div className="hidden sm:block table-wrapper">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Employee ID</th>
+                      <th>Full Name</th>
+                      <th>Phone</th>
+                      <th>Area</th>
+                      <th>Designation</th>
+                      <th>Status</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {provinceData.map(sp => (
+                      <tr key={sp._id}>
+                        <td className="font-medium text-blue-600">{sp.employeeId}</td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
+                              <FiUser className="text-white text-xs" />
+                            </div>
+                            <span className="font-medium">{sp.fullName}</span>
+                          </div>
+                        </td>
+                        <td>{sp.phone}</td>
+                        <td>{sp.area}</td>
+                        <td><span className="badge-info">{sp.designation}</span></td>
+                        <td><StatusBadge status={sp.status} /></td>
+                        <td>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => openEdit(sp)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors"><FiEdit2 size={14} /></button>
+                            <button onClick={() => setConfirm({ open: true, id: sp._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500 transition-colors"><FiTrash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 

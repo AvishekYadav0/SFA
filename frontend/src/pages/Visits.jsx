@@ -158,7 +158,31 @@ export default function Visits() {
             action={<button className="btn-primary" onClick={openCreate}><FiPlus />Check In</button>} />
         ) : (
           <>
-            <div className="table-wrapper">
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {visits.map(v => (
+                <div key={v._id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-white">{v.dealer?.dealerName || '—'}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{v.se?.name || '—'}</p>
+                    </div>
+                    <StatusBadge status={v.status} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                    <span>In: {v.checkInTime ? new Date(v.checkInTime).toLocaleString() : '—'}</span>
+                    <span>Out: {v.checkOutTime ? new Date(v.checkOutTime).toLocaleString() : '—'}</span>
+                  </div>
+                  {v.remarks && <p className="text-xs text-slate-400 truncate">{v.remarks}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => openEdit(v)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600"><FiEdit2 size={14} /></button>
+                    <button onClick={() => setConfirm({ open: true, id: v._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"><FiTrash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block table-wrapper">
               <table className="table">
                 <thead>
                   <tr><th>Dealer</th><th>Staff Member</th><th>Check In</th><th>Check Out</th><th>Status</th><th>Remarks</th><th>Actions</th></tr>
@@ -196,7 +220,7 @@ export default function Visits() {
             <div className="sm:col-span-2">
               <label className="label">Staff Member</label>
               <select {...register('se')} className="input">
-                <option value="">— All Dealers —</option>
+                <option value="">All Staff</option>
                 {['nsm','rsm','asm','se','so'].map(role => {
                   const group = staffList.filter(s => s.role === role);
                   if (!group.length) return null;

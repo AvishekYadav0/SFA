@@ -227,82 +227,104 @@ export default function Dealers() {
               <p className="text-sm mt-1">Click "Add Dealer" to add one</p>
             </div>
           ) : (
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Dealer Name</th>
-                    <th>Owner</th>
-                    <th>Phone</th>
-                    <th>PAN</th>
-                    <th>NID</th>
-                    <th>Credit Limit</th>
-                    <th>Outstanding</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {provinceData.map(d => (
-                    <tr key={d._id} onClick={() => openEdit(d)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
-                            <FiShoppingBag className="text-white text-xs" />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-medium block">{d.dealerName}</span>
-                            {getDealerTeam(d).length > 0 && (
-                              <span className="text-[10px] text-primary-600 block mt-0.5">
-                                {getDealerTeam(d).map((staff, index) => (
-                                  <span key={`${staff.role}-${staff.name}`}>
-                                    {index > 0 ? ' · ' : '👤 '}{staff.name} ({staff.role})
-                                  </span>
-                                ))}
-                              </span>
-                            )}
-                          </div>
+            <>
+              {/* Mobile cards */}
+              <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {provinceData.map(d => (
+                  <div key={d._id} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
+                          <FiShoppingBag className="text-white text-xs" />
                         </div>
-                      </td>
-                      <td>{d.ownerName}</td>
-                      <td>{d.phone}</td>
-                      <td className="text-slate-500">{d.panNumber || '—'}</td>
-                      <td className="text-slate-500">{d.nidNumber || '—'}</td>
-                      <td>{formatCurrency(d.creditLimit)}</td>
-                      <td className="font-semibold text-red-600">{formatCurrency(d.outstandingAmount || 0)}</td>
-                      <td><StatusBadge status={d.status} /></td>
-                      <td onClick={event => event.stopPropagation()}>
-                        <div className="flex gap-1.5">
-                          <button onClick={() => openSOModal(d)}
-                            title="Assign Sales Officers"
-                            className="p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg text-yellow-600 transition-colors">
-                            <FiUserPlus size={14} />
-                          </button>
-                          <button onClick={() => openLinkModal(d)}
-                            title={d.linkedUser ? 'Change linked user' : 'Link user account'}
-                            className={`p-1.5 rounded-lg transition-colors ${d.linkedUser ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
-                            <FiLink size={14} />
-                          </button>
-                          <button onClick={() => openEdit(d)}
-                            className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors">
-                            <FiEdit2 size={14} />
-                          </button>
-                          <button onClick={(event) => { event.stopPropagation(); navigate(`/dealers/${d._id}`); }}
-                            title="View details"
-                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 transition-colors">
-                            <FiChevronRight size={14} />
-                          </button>
-                          <button onClick={() => setConfirm({ open: true, id: d._id })}
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500 transition-colors">
-                            <FiTrash2 size={14} />
-                          </button>
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-white text-sm">{d.dealerName}</p>
+                          <p className="text-xs text-slate-500">{d.ownerName}</p>
                         </div>
-                      </td>
+                      </div>
+                      <StatusBadge status={d.status} />
+                    </div>
+                    {getDealerTeam(d).length > 0 && (
+                      <p className="text-[10px] text-primary-600">
+                        {getDealerTeam(d).map((s, i) => `${i > 0 ? ' · ' : ''}${s.name} (${s.role})`).join('')}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                      <span>{d.phone}</span>
+                      <span>PAN: {d.panNumber || '—'}</span>
+                      <span>Limit: {formatCurrency(d.creditLimit)}</span>
+                      <span className="text-red-600 font-medium">Due: {formatCurrency(d.outstandingAmount || 0)}</span>
+                    </div>
+                    <div className="flex gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => openSOModal(d)} className="p-1.5 hover:bg-yellow-50 rounded-lg text-yellow-600"><FiUserPlus size={14} /></button>
+                      <button onClick={() => openLinkModal(d)} className={`p-1.5 rounded-lg ${d.linkedUser ? 'text-green-600' : 'text-slate-400'}`}><FiLink size={14} /></button>
+                      <button onClick={() => openEdit(d)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600"><FiEdit2 size={14} /></button>
+                      <button onClick={() => navigate(`/dealers/${d._id}`)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><FiChevronRight size={14} /></button>
+                      <button onClick={() => setConfirm({ open: true, id: d._id })} className="p-1.5 hover:bg-red-50 rounded-lg text-red-500"><FiTrash2 size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop table */}
+              <div className="hidden sm:block table-wrapper">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Dealer Name</th>
+                      <th>Owner</th>
+                      <th>Phone</th>
+                      <th>PAN</th>
+                      <th>NID</th>
+                      <th>Credit Limit</th>
+                      <th>Outstanding</th>
+                      <th>Status</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {provinceData.map(d => (
+                      <tr key={d._id} onClick={() => openEdit(d)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-full ${color.icon} flex items-center justify-center flex-shrink-0`}>
+                              <FiShoppingBag className="text-white text-xs" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-medium block">{d.dealerName}</span>
+                              {getDealerTeam(d).length > 0 && (
+                                <span className="text-[10px] text-primary-600 block mt-0.5">
+                                  {getDealerTeam(d).map((staff, index) => (
+                                    <span key={`${staff.role}-${staff.name}`}>
+                                      {index > 0 ? ' · ' : '👤 '}{staff.name} ({staff.role})
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td>{d.ownerName}</td>
+                        <td>{d.phone}</td>
+                        <td className="text-slate-500">{d.panNumber || '—'}</td>
+                        <td className="text-slate-500">{d.nidNumber || '—'}</td>
+                        <td>{formatCurrency(d.creditLimit)}</td>
+                        <td className="font-semibold text-red-600">{formatCurrency(d.outstandingAmount || 0)}</td>
+                        <td><StatusBadge status={d.status} /></td>
+                        <td onClick={event => event.stopPropagation()}>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => openSOModal(d)} title="Assign Sales Officers" className="p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg text-yellow-600 transition-colors"><FiUserPlus size={14} /></button>
+                            <button onClick={() => openLinkModal(d)} title={d.linkedUser ? 'Change linked user' : 'Link user account'} className={`p-1.5 rounded-lg transition-colors ${d.linkedUser ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><FiLink size={14} /></button>
+                            <button onClick={() => openEdit(d)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 transition-colors"><FiEdit2 size={14} /></button>
+                            <button onClick={(event) => { event.stopPropagation(); navigate(`/dealers/${d._id}`); }} title="View details" className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 transition-colors"><FiChevronRight size={14} /></button>
+                            <button onClick={() => setConfirm({ open: true, id: d._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500 transition-colors"><FiTrash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 
