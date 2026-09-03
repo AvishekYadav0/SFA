@@ -30,7 +30,10 @@ export default function Visits() {
   const [staffLoading, setStaffLoading] = useState(false);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm();
+
+  const isManager = ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role);
   const selectedStaff = watch('se');
+  const selectedDealer = watch('dealer');
 
   const load = () => {
     setLoading(true);
@@ -41,18 +44,29 @@ export default function Visits() {
   };
 
   useEffect(() => { load(); }, [page]);
-  useEffect(() => {
-    dealerService.getAll({ limit: 500 }).then(r => setDealers(r.data.data || [])).catch(() => {});
-    userService.getAll({ limit: 200, status: 'active' }).then(r => setStaffList(r.data.data || [])).catch(() => {});
-  }, []);
 
-  // When staff selection changes, filter dealers by that staff member's role
   useEffect(() => {
+    // For SE/SO: only fetch their assigned dealers
+    if (user?.role === 'se') {
+      dealerService.getAll({ limit: 500, se: user._id }).then(r => setDealers(r.data.data || [])).catch(() => {});
+    } else if (user?.role === 'so') {
+      dealerService.getAll({ limit: 500, so: user._id }).then(r => setDealers(r.data.data || [])).catch(() => {});
+    } else {
+      dealerService.getAll({ limit: 500 }).then(r => setDealers(r.data.data || [])).catch(() => {});
+    }
+    if (isManager) {
+      userService.getAll({ limit: 200, status: 'active' }).then(r => setStaffList(r.data.data || [])).catch(() => {});
+    }
+  }, [user]);
+
+  // Managers: when staff selection changes, filter dealers by that staff member's role
+  useEffect(() => {
+    if (!isManager) return;
     if (!selectedStaff) { setFilteredDealers(dealers); return; }
     const staff = staffList.find(s => s._id === selectedStaff);
     if (!staff) { setFilteredDealers(dealers); return; }
     setStaffLoading(true);
-    const roleParam = ['so'].includes(staff.role) ? { so: staff._id } :
+    const roleParam = staff.role === 'so'  ? { so:  staff._id } :
                       staff.role === 'se'  ? { se:  staff._id } :
                       staff.role === 'asm' ? { asm: staff._id } :
                       staff.role === 'rsm' ? { rsm: staff._id } :
@@ -61,7 +75,27 @@ export default function Visits() {
       .then(r => setFilteredDealers(r.data.data || []))
       .catch(() => setFilteredDealers([]))
       .finally(() => setStaffLoading(false));
-  }, [selectedStaff, staffList, dealers]);
+  }, [selectedStaff, staffList, dealers, isManager]);
+
+  // SE/SO: always use their own dealers
+  useEffect(() => {
+    if (!isManager) setFilteredDealers(dealers);
+  }, [dealers, isManager]);
+
+  // When dealer is selected, auto-fill Staff Member from dealer hierarchy
+  useEffect(() => {
+    if (!selectedDealer || !isManager) return;
+    const dealer = (isManager ? filteredDealers : dealers).find(d => d._id === selectedDealer)
+      || dealers.find(d => d._id === selectedDealer);
+    if (!dealer) return;
+    // Pick the most specific assigned staff from dealer hierarchy
+    const staffId = dealer.so?.[0]?._id || dealer.so?.[0]
+      || dealer.se?._id || dealer.se
+      || dealer.asm?._id || dealer.asm
+      || dealer.rsm?._id || dealer.rsm
+      || dealer.nsm?._id || dealer.nsm;
+    if (staffId) setValue('se', typeof staffId === 'object' ? String(staffId) : staffId);
+  }, [selectedDealer]);
 
   const getGPS = () => {
     setGpsLoading(true);
@@ -77,8 +111,11 @@ export default function Visits() {
   };
 
   const openCreate = () => {
-    reset({ checkInTime: new Date().toISOString().slice(0, 16), status: 'checked-in' });
-    setFilteredDealers(dealers);
+    const defaults = { checkInTime: new Date().toISOString().slice(0, 16), status: 'checked-in' };
+    // SE/SO: pre-fill themselves as the staff member
+    if (!isManager) defaults.se = user._id;
+    reset(defaults);
+    setFilteredDealers(isManager ? dealers : filteredDealers);
     setModal({ open: true, data: null });
   };
   const openEdit = (v) => {
@@ -154,21 +191,24 @@ export default function Visits() {
       <Modal open={modal.open} onClose={() => setModal({ open: false, data: null })}
         title={modal.data ? 'Edit Visit' : 'Record Visit'} size="lg">
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="label">Staff Member (Filter Dealers by Role)</label>
-            <select {...register('se')} className="input">
-              <option value="">— All Dealers —</option>
-              {['nsm','rsm','asm','se','so'].map(role => {
-                const group = staffList.filter(s => s.role === role);
-                if (!group.length) return null;
-                return (
-                  <optgroup key={role} label={role.toUpperCase()}>
-                    {group.map(s => <option key={s._id} value={s._id}>{s.name} ({s.employeeId || role})</option>)}
-                  </optgroup>
-                );
-              })}
-            </select>
-          </div>
+          {/* Staff Member — only shown to managers */}
+          {isManager && (
+            <div className="sm:col-span-2">
+              <label className="label">Staff Member</label>
+              <select {...register('se')} className="input">
+                <option value="">— All Dealers —</option>
+                {['nsm','rsm','asm','se','so'].map(role => {
+                  const group = staffList.filter(s => s.role === role);
+                  if (!group.length) return null;
+                  return (
+                    <optgroup key={role} label={role.toUpperCase()}>
+                      {group.map(s => <option key={s._id} value={s._id}>{s.name} ({s.employeeId || role.toUpperCase()})</option>)}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label className="label">Dealer *</label>
             <select {...register('dealer', { required: 'Required' })} className="input" disabled={staffLoading}>
