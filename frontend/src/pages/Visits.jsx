@@ -215,12 +215,12 @@ export default function Visits() {
       <Modal open={modal.open} onClose={() => setModal({ open: false, data: null })}
         title={modal.data ? 'Edit Visit' : 'Record Visit'} size="lg">
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Staff Member — only shown to managers */}
-          {isManager && (
-            <div className="sm:col-span-2">
-              <label className="label">Staff Member</label>
+          {/* Staff Member — managers see full list, SE/SO see only themselves */}
+          <div className="sm:col-span-2">
+            <label className="label">Staff Member</label>
+            {isManager ? (
               <select {...register('se')} className="input">
-                <option value="">All Staff</option>
+                <option value="">— All Staff —</option>
                 {['nsm','rsm','asm','se','so'].map(role => {
                   const group = staffList.filter(s => s.role === role);
                   if (!group.length) return null;
@@ -231,8 +231,14 @@ export default function Visits() {
                   );
                 })}
               </select>
-            </div>
-          )}
+            ) : (
+              <input
+                value={user?.name ? `${user.name} (${user.role?.toUpperCase()})` : ''}
+                readOnly
+                className="input bg-slate-50 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
+              />
+            )}
+          </div>
           <div className="sm:col-span-2">
             <label className="label">Dealer *</label>
             <select {...register('dealer', { required: 'Required' })} className="input" disabled={staffLoading}>
