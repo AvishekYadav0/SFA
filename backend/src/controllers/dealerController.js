@@ -35,7 +35,10 @@ exports.getAll = async (req, res) => {
     if (req.query.district) filter.district = req.query.district;
     if (req.query.area)     filter.area     = req.query.area;
     if (req.query.se)       filter.se       = req.query.se;
+    if (req.query.so)       filter.so       = req.query.so;
     if (req.query.asm)      filter.asm      = req.query.asm;
+    if (req.query.rsm)      filter.rsm      = req.query.rsm;
+    if (req.query.nsm)      filter.nsm      = req.query.nsm;
     if (req.query.search)   filter.$or = [
       { dealerName: new RegExp(req.query.search, 'i') },
       { dealerCode: new RegExp(req.query.search, 'i') },

@@ -970,13 +970,15 @@ export default function Sales() {
   const submitManualSale = async () => {
     const gt = computeGrandTotal();
     const dealer = dealers.find(item => item._id === manualSale.dealer);
-    const collected = Math.max(0, Number(manualSale.collectedAmount) || 0);
+    const collected = ['delivered', 'completed'].includes(manualSale.status)
+      ? Math.max(0, Number(manualSale.collectedAmount) || 0)
+      : 0;
     const projectedOutstanding = Number(dealer?.outstandingAmount || 0) + Math.max(0, gt - collected);
     if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !gt) {
       toast.error('Fill dealer, salesperson, province, address, and at least one priced item before saving.');
       return;
     }
-    if (dealer?.creditStatus === 'allowed' && projectedOutstanding > Number(dealer.creditLimit || 0)) {
+    if (['delivered', 'completed'].includes(manualSale.status) && dealer?.creditStatus === 'allowed' && projectedOutstanding > Number(dealer.creditLimit || 0)) {
       toast.error('Sale exceeds the dealer credit limit. Reduce the sale or collection amount.');
       return;
     }
@@ -1014,7 +1016,11 @@ export default function Sales() {
         delete payload.orderNumber;
       }
       await api.post(endpoint, payload);
-      toast.success(entryMode === 'from-order' ? 'Sale created from order and invoice generated.' : 'Manual sale saved and province totals refreshed.');
+      toast.success(
+        ['delivered', 'completed'].includes(manualSale.status)
+          ? (entryMode === 'from-order' ? 'Sale created from order and invoice generated.' : 'Manual sale saved and province totals refreshed.')
+          : `Sale created with status "${manualSale.status}" — visible in Pipeline.`
+      );
       setEntryMode('choice');
       setSelectedOrder(null);
       setManualSale({

@@ -444,7 +444,7 @@ router.post('/manual', protect, async (req, res) => {
     const sp = await User.findById(salesperson).lean();
     const hierarchyField = sp ? (sp.role === 'so' ? 'so' : sp.role === 'se' ? 'se' : sp.role === 'asm' ? 'asm' : sp.role === 'rsm' ? 'rsm' : sp.role === 'nsm' ? 'nsm' : 'se') : 'se';
 
-    // Create Order record so it appears in All Orders table
+    // Create Order record so it appears in Pipeline / All Orders table
     const newOrder = await Order.create({
       [hierarchyField]: salesperson,
       dealer,
@@ -456,14 +456,13 @@ router.post('/manual', protect, async (req, res) => {
       totalExciseAmount: orderItems.reduce((s, i) => s + (i.exciseAmount || 0), 0),
       totalVatAmount: orderItems.reduce((s, i) => s + (i.vatAmount || 0), 0),
       grandTotal: finalGrandTotal,
-      collectedAmount: finalCollected,
+      collectedAmount: ['delivered', 'completed'].includes(status) ? finalCollected : 0,
       paymentType: paymentType || 'cash',
-      status: 'completed',
+      status,
       remarks,
       createdBy: req.user._id,
     });
 
-    const normalizedItems = orderItems;
     const saleData = {
       manualSaleId:   `MSALE-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       salesperson,
@@ -472,9 +471,9 @@ router.post('/manual', protect, async (req, res) => {
       dueDate: addDateOnlyDays(parseDateOnly(date), dealerDoc.creditDays),
       province,
       area,
-      items: normalizedItems,
+      items: orderItems,
       grandTotal: finalGrandTotal,
-      collectedAmount: finalCollected,
+      collectedAmount: ['delivered', 'completed'].includes(status) ? finalCollected : 0,
       paymentType:    paymentType || 'cash',
       status,
       staffId:        req.user._id,
@@ -487,7 +486,26 @@ router.post('/manual', protect, async (req, res) => {
 
     const sale = await Sale.create(saleData);
 
-    const collection = await postSaleAccounting({ sale, req, dealer: dealerDoc, salesperson, collectedAmount: finalCollected, paymentType, collectionDate });
+    // Only run accounting + stock dispatch for delivered/completed sales
+    let collection = null;
+    if (['delivered', 'completed'].includes(status)) {
+      collection = await postSaleAccounting({ sale, req, dealer: dealerDoc, salesperson, collectedAmount: finalCollected, paymentType, collectionDate });
+      // Create COMPANY_DISPATCH stock transactions for each item
+      const DealerStockTransaction = require('../models/DealerStockTransaction');
+      await Promise.all(orderItems.map(item =>
+        DealerStockTransaction.create({
+          dealer:          dealerDoc._id,
+          product:         item.product,
+          transactionDate: parseDateOnly(date),
+          transactionType: 'COMPANY_DISPATCH',
+          quantity:        item.quantity,
+          referenceType:   'Sale',
+          referenceId:     sale._id,
+          remarks:         `Manual sale ${sale.manualSaleId}`,
+          createdBy:       req.user._id,
+        })
+      ));
+    }
     return res.status(201).json({ success: true, data: sale, order: newOrder, collection });
   } catch (err) {
     console.error('manual sale failed:', err);

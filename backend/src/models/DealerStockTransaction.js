@@ -44,7 +44,7 @@ const dealerStockTransactionSchema = new mongoose.Schema({
   // Reference to source document (Order, Transfer, etc.)
   referenceType: {
     type: String,
-    enum: ['Order', 'Transfer', 'Adjustment', 'Manual', 'Opening', null],
+    enum: ['Order', 'Transfer', 'Adjustment', 'Manual', 'Opening', 'Sale', null],
     default: null,
   },
   referenceId: {

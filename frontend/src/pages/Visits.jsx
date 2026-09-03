@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { visitService, dealerService } from '../services';
+import { visitService, dealerService, userService } from '../services';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Pagination } from '../components/common/Pagination';
@@ -25,8 +25,12 @@ export default function Visits() {
   const [page, setPage]       = useState(1);
   const [search, setSearch]   = useState('');
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [staffList, setStaffList]   = useState([]);
+  const [filteredDealers, setFilteredDealers] = useState([]);
+  const [staffLoading, setStaffLoading] = useState(false);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm();
+  const selectedStaff = watch('se');
 
   const load = () => {
     setLoading(true);
@@ -39,7 +43,25 @@ export default function Visits() {
   useEffect(() => { load(); }, [page]);
   useEffect(() => {
     dealerService.getAll({ limit: 500 }).then(r => setDealers(r.data.data || [])).catch(() => {});
+    userService.getAll({ limit: 200, status: 'active' }).then(r => setStaffList(r.data.data || [])).catch(() => {});
   }, []);
+
+  // When staff selection changes, filter dealers by that staff member's role
+  useEffect(() => {
+    if (!selectedStaff) { setFilteredDealers(dealers); return; }
+    const staff = staffList.find(s => s._id === selectedStaff);
+    if (!staff) { setFilteredDealers(dealers); return; }
+    setStaffLoading(true);
+    const roleParam = ['so'].includes(staff.role) ? { so: staff._id } :
+                      staff.role === 'se'  ? { se:  staff._id } :
+                      staff.role === 'asm' ? { asm: staff._id } :
+                      staff.role === 'rsm' ? { rsm: staff._id } :
+                      staff.role === 'nsm' ? { nsm: staff._id } : {};
+    dealerService.getAll({ limit: 500, ...roleParam })
+      .then(r => setFilteredDealers(r.data.data || []))
+      .catch(() => setFilteredDealers([]))
+      .finally(() => setStaffLoading(false));
+  }, [selectedStaff, staffList, dealers]);
 
   const getGPS = () => {
     setGpsLoading(true);
@@ -56,9 +78,13 @@ export default function Visits() {
 
   const openCreate = () => {
     reset({ checkInTime: new Date().toISOString().slice(0, 16), status: 'checked-in' });
+    setFilteredDealers(dealers);
     setModal({ open: true, data: null });
   };
-  const openEdit = (v) => { reset({ ...v, dealer: v.dealer?._id || v.dealer }); setModal({ open: true, data: v }); };
+  const openEdit = (v) => {
+    reset({ ...v, dealer: v.dealer?._id || v.dealer, se: v.se?._id || v.se });
+    setModal({ open: true, data: v });
+  };
 
   const onSubmit = async (data) => {
     try {
@@ -98,7 +124,7 @@ export default function Visits() {
             <div className="table-wrapper">
               <table className="table">
                 <thead>
-                  <tr><th>Dealer</th><th>SE</th><th>Check In</th><th>Check Out</th><th>Area</th><th>Status</th><th>Remarks</th><th>Actions</th></tr>
+                  <tr><th>Dealer</th><th>Staff Member</th><th>Check In</th><th>Check Out</th><th>Status</th><th>Remarks</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                   {visits.map(v => (
@@ -107,7 +133,6 @@ export default function Visits() {
                       <td className="text-slate-500 text-sm">{v.se?.name || '—'}</td>
                       <td className="text-slate-500 text-sm">{v.checkInTime ? new Date(v.checkInTime).toLocaleString() : '—'}</td>
                       <td className="text-slate-500 text-sm">{v.checkOutTime ? new Date(v.checkOutTime).toLocaleString() : '—'}</td>
-                      <td className="text-slate-500 text-sm">{v.area || '—'}</td>
                       <td><StatusBadge status={v.status} /></td>
                       <td className="text-slate-500 text-sm max-w-32 truncate">{v.remarks || '—'}</td>
                       <td>
@@ -130,10 +155,25 @@ export default function Visits() {
         title={modal.data ? 'Edit Visit' : 'Record Visit'} size="lg">
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
+            <label className="label">Staff Member (Filter Dealers by Role)</label>
+            <select {...register('se')} className="input">
+              <option value="">— All Dealers —</option>
+              {['nsm','rsm','asm','se','so'].map(role => {
+                const group = staffList.filter(s => s.role === role);
+                if (!group.length) return null;
+                return (
+                  <optgroup key={role} label={role.toUpperCase()}>
+                    {group.map(s => <option key={s._id} value={s._id}>{s.name} ({s.employeeId || role})</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
+          <div className="sm:col-span-2">
             <label className="label">Dealer *</label>
-            <select {...register('dealer', { required: 'Required' })} className="input">
-              <option value="">Select dealer...</option>
-              {dealers.map(d => <option key={d._id} value={d._id}>{d.dealerName} — {d.area}</option>)}
+            <select {...register('dealer', { required: 'Required' })} className="input" disabled={staffLoading}>
+              <option value="">{staffLoading ? 'Loading...' : 'Select dealer...'}</option>
+              {filteredDealers.map(d => <option key={d._id} value={d._id}>{d.dealerName}</option>)}
             </select>
             {errors.dealer && <p className="text-danger text-xs mt-1">{errors.dealer.message}</p>}
           </div>
