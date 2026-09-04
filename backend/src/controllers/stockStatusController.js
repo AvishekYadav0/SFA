@@ -14,7 +14,8 @@ const resolveMonth = (m) => {
 // GET /api/stock-status
 exports.getStockStatus = async (req, res) => {
   try {
-    const { dealerId, productId, area, region, month, year } = req.query;
+    const { productId, area, region, month, year } = req.query;
+    const dealerId = req.user.role === 'dealer' ? req.user.linkedDealer : req.query.dealerId;
     const monthNum = resolveMonth(month);
     const { summary, products } = await getStockSummary({ dealerId, productId, area, region, month: monthNum, year });
     res.json({ success: true, data: { summary, products } });
@@ -64,7 +65,8 @@ async function getClosingStock(dealerId, productId) {
 // POST /api/stock-status/dealer-sales
 exports.recordDealerSales = async (req, res) => {
   try {
-    const { dealerId, productId, quantity, transactionDate, remarks } = req.body;
+    const { productId, quantity, transactionDate, remarks } = req.body;
+    const dealerId = req.user.role === 'dealer' ? req.user.linkedDealer : req.body.dealerId;
     if (!dealerId || !productId || !quantity)
       return res.status(400).json({ success: false, message: 'dealerId, productId and quantity are required' });
 
@@ -101,7 +103,8 @@ exports.recordDealerSales = async (req, res) => {
 // POST /api/stock-status/adjustments
 exports.createAdjustment = async (req, res) => {
   try {
-    const { dealerId, productId, quantity, transactionType, transactionDate, reason, remarks } = req.body;
+    const { productId, quantity, transactionType, transactionDate, reason, remarks } = req.body;
+    const dealerId = req.user.role === 'dealer' ? req.user.linkedDealer : req.body.dealerId;
 
     const ADJUSTMENT_TYPES = ['DAMAGE','EXPIRED','SAMPLE','PROMOTIONAL','RETURN_TO_COMPANY','ADJUSTMENT_IN','ADJUSTMENT_OUT'];
     if (!ADJUSTMENT_TYPES.includes(transactionType))
@@ -182,10 +185,11 @@ exports.createTransfer = async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const { sourceDealerId, destinationDealerId, productId, quantity, transactionDate, remarks } = req.body;
+    const effectiveSourceDealerId = req.user.role === 'dealer' ? String(req.user.linkedDealer) : sourceDealerId;
 
-    if (!sourceDealerId || !destinationDealerId || !productId || !quantity)
+    if (!effectiveSourceDealerId || !destinationDealerId || !productId || !quantity)
       return res.status(400).json({ success: false, message: 'sourceDealerId, destinationDealerId, productId and quantity are required' });
-    if (String(sourceDealerId) === String(destinationDealerId))
+    if (effectiveSourceDealerId === String(destinationDealerId))
       return res.status(400).json({ success: false, message: 'Source and destination dealer cannot be the same' });
 
     const qty = Number(quantity);
@@ -193,7 +197,7 @@ exports.createTransfer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Quantity must be greater than 0' });
 
     // Check source stock BEFORE opening session (read outside tx is fine — we re-validate inside)
-    const available = await getClosingStock(sourceDealerId, productId);
+    const available = await getClosingStock(effectiveSourceDealerId, productId);
     if (qty > available)
       return res.status(400).json({
         success: false,
@@ -214,11 +218,11 @@ exports.createTransfer = async (req, res) => {
     let transferOut, transferIn;
     await session.withTransaction(async () => {
       [transferOut] = await DealerStockTransaction.create(
-        [{ ...base, dealer: sourceDealerId,      transactionType: 'TRANSFER_OUT', destinationDealer: destinationDealerId }],
+        [{ ...base, dealer: effectiveSourceDealerId, transactionType: 'TRANSFER_OUT', destinationDealer: destinationDealerId }],
         { session }
       );
       [transferIn] = await DealerStockTransaction.create(
-        [{ ...base, dealer: destinationDealerId, transactionType: 'TRANSFER_IN',  sourceDealer: sourceDealerId }],
+        [{ ...base, dealer: destinationDealerId, transactionType: 'TRANSFER_IN',  sourceDealer: effectiveSourceDealerId }],
         { session }
       );
     });

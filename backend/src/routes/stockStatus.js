@@ -11,16 +11,16 @@ router.get('/', c.getStockStatus);
 router.get('/dealer/:dealerId/product/:productId/ledger', c.getStockLedger);
 
 // Record dealer sale (with stock validation)
-router.post('/dealer-sales', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), c.recordDealerSales);
+router.post('/dealer-sales', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so', 'dealer'), c.recordDealerSales);
 
 // Stock adjustments (damage, expired, sample, etc.)
-router.post('/adjustments', authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.createAdjustment);
+router.post('/adjustments', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'dealer'), c.createAdjustment);
 
 // Record a single transaction
 router.post('/transaction', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), c.createTransaction);
 
 // Atomic stock transfer between two dealers
-router.post('/transfer',  authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.createTransfer);
-router.post('/transfers', authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.createTransfer);
+router.post('/transfer',  authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'dealer'), c.createTransfer);
+router.post('/transfers', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'dealer'), c.createTransfer);
 
 module.exports = router;

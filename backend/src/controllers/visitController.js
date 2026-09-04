@@ -55,13 +55,18 @@ exports.create = async (req, res) => {
     const dealer = await Dealer.findById(req.body.dealer);
 
     let creator = req.user;
-    if (['admin', 'nsm', 'rsm', 'asm'].includes(req.user.role) && req.body.se) {
+    if (['admin', 'nsm', 'rsm', 'asm', 'se'].includes(req.user.role) && req.body.se) {
       creator = await User.findById(req.body.se);
     }
     const hierarchy = await hierarchyFields(creator);
 
+    // If the selected staff is an SO, hierarchy already sets so/se correctly.
+    // If the selected staff is an SE, hierarchy sets se correctly.
+    // Remove req.body.se so it doesn't override the hierarchy-computed se field.
+    const { se: _ignored, ...bodyRest } = req.body;
+
     const data = await Visit.create({
-      ...req.body,
+      ...bodyRest,
       ...hierarchy,
       province: dealer?.province,
       district: dealer?.district,

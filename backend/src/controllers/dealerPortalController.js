@@ -35,18 +35,32 @@ exports.getStockStatus = async (req, res) => {
     const dealerId = getDealerId(req);
     const match = { dealer: new mongoose.Types.ObjectId(dealerId) };
 
+    // Optional month/year filter
+    const { month, year } = req.query;
+    if (month && year) {
+      const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const m = MONTHS.indexOf(month);
+      if (m !== -1) {
+        const y = parseInt(year);
+        match.transactionDate = { $gte: new Date(y, m, 1), $lte: new Date(y, m + 1, 0, 23, 59, 59) };
+      }
+    }
+
     const data = await DealerStockTransaction.aggregate([
       { $match: match },
       { $group: { _id: '$product', ...stockAccumulators() } },
-      { $addFields: { closingStock: closingStockExpr } },
+      { $addFields: {
+        closingStock: closingStockExpr,
+        totalStock: { $add: ['$openingStock', '$companyDispatch', '$transferIn', '$adjustmentIn'] },
+        transfers:  { $add: ['$transferOut', '$damage', '$expired', '$sample', '$promotional', '$returnToCompany', '$adjustmentOut'] },
+      }},
       { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: '_product' } },
       { $unwind: { path: '$_product', preserveNullAndEmptyArrays: true } },
       { $project: {
         _id: 0,
-        productId:       '$_id',
-        productName:     '$_product.productName',
-        openingStock: 1, companyDispatch: 1, dealerSales: 1, closingStock: 1,
-        transferIn: 1,  transferOut: 1,    damage: 1,     expired: 1,
+        productId: '$_id', productName: '$_product.productName',
+        openingStock: 1, companyDispatch: 1, totalStock: 1,
+        dealerSales: 1, transfers: 1, closingStock: 1,
       }},
       { $sort: { productName: 1 } },
     ]);

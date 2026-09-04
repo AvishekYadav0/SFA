@@ -165,7 +165,7 @@ export default function Visits() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-semibold text-slate-900 dark:text-white">{v.dealer?.dealerName || '—'}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{v.se?.name || '—'}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{v.so?.name || v.se?.name || '—'}</p>
                     </div>
                     <StatusBadge status={v.status} />
                   </div>
@@ -191,7 +191,7 @@ export default function Visits() {
                   {visits.map(v => (
                     <tr key={v._id}>
                       <td className="font-medium">{v.dealer?.dealerName || '—'}</td>
-                      <td className="text-slate-500 text-sm">{v.se?.name || '—'}</td>
+                      <td className="text-slate-500 text-sm">{v.so?.name || v.se?.name || '—'}</td>
                       <td className="text-slate-500 text-sm">{v.checkInTime ? new Date(v.checkInTime).toLocaleString() : '—'}</td>
                       <td className="text-slate-500 text-sm">{v.checkOutTime ? new Date(v.checkOutTime).toLocaleString() : '—'}</td>
                       <td><StatusBadge status={v.status} /></td>

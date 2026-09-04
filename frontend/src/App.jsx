@@ -77,7 +77,7 @@ const AppRoutes = () => {
           <Route path="/orders"       element={<Orders />} />
           <Route path="/pipeline"     element={<RoleRoute roles={['nsm','rsm','asm','admin']}><Pipeline /></RoleRoute>} />
           <Route path="/sales"        element={<Sales />} />
-          <Route path="/stock-status"  element={<StockStatus />} />
+          <Route path="/stock-status"  element={<RoleRoute roles={['nsm','rsm','asm','se','so','dealer','admin']}><StockStatus /></RoleRoute>} />
           <Route path="/collections"  element={<Collections />} />
           <Route path="/collection-plans" element={<CollectionPlans />} />
           <Route path="/monthly-planning" element={<MonthlyPlanning />} />

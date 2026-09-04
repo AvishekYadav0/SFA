@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FiPackage, FiTruck, FiLayers, FiShoppingCart, FiRefreshCw, FiArchive, FiPlus, FiPrinter, FiDownload, FiX } from 'react-icons/fi';
 import { dealerService, productService, stockStatusService } from '../services';
 import { PageLoader } from '../components/common/Spinner';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -308,6 +309,7 @@ function StockTransferModal({ dealers, products, onClose, onSaved }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StockStatus() {
+  const { isDealer } = useAuth();
   const now = new Date();
   const [filters, setFilters] = useState({
     area: '', region: '', dealer: '', 
@@ -335,29 +337,31 @@ export default function StockStatus() {
       setDealers(dr.data?.data?.dealers || dr.data?.data || []);
       setProducts(pr.data?.data?.products || pr.data?.data || []);
     }).catch(() => {});
-  }, []);
+  }, [isDealer]);
 
   // load stock data
   const loadStock = useCallback(() => {
     setLoading(true);
     setError(null);
-    stockStatusService.getAll({
-        area:     filters.area     || undefined,
-        region:   filters.region   || undefined,
-        dealerId: filters.dealer   || undefined,
-        month:    filters.month    || undefined,
-        year:     filters.year     || undefined,
-      })
+    const request = stockStatusService.getAll({
+          area:     filters.area     || undefined,
+          region:   filters.region   || undefined,
+          dealerId: isDealer ? undefined : (filters.dealer || undefined),
+          month:    filters.month    || undefined,
+          year:     filters.year     || undefined,
+        });
+    request
       .then(r => {
         const data = r.data?.data;
-        setRows(Array.isArray(data) ? data : (data?.products || []));
+        const stockRows = Array.isArray(data) ? data : (data?.products || []);
+        setRows(stockRows.map(row => ({ ...row, dealerName: row.dealerName || (isDealer ? 'My Stock' : '') })));
       })
       .catch(() => {
         setRows([]);
         setError('Failed to load stock data.');
       })
       .finally(() => setLoading(false));
-  }, [filters]);
+  }, [filters, isDealer]);
 
   useEffect(() => { loadStock(); }, [loadStock]);
 
@@ -387,21 +391,21 @@ export default function StockStatus() {
       {/* Filters */}
       <div className="card p-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div>
+          {!isDealer && <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Area</label>
             <select value={filters.area} onChange={e => setF('area', e.target.value)} className="input w-full">
               <option value="">All Areas</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
-          </div>
-          <div>
+          </div>}
+          {!isDealer && <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Region</label>
             <select value={filters.region} onChange={e => setF('region', e.target.value)} className="input w-full">
               <option value="">All Regions</option>
               {regions.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-          </div>
-          <div>
+          </div>}
+          {!isDealer && <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Dealer</label>
             <select value={filters.dealer} onChange={e => setF('dealer', e.target.value)} className="input w-full">
               <option value="">All Dealers</option>
@@ -409,7 +413,7 @@ export default function StockStatus() {
                 .filter(d => (!filters.area || d.area === filters.area) && (!filters.region || d.province === filters.region))
                 .map(d => <option key={d._id} value={d._id}>{d.dealerName}</option>)}
             </select>
-          </div>
+          </div>}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Month</label>
             <select value={filters.month} onChange={e => setF('month', e.target.value)} className="input w-full">
@@ -534,7 +538,7 @@ export default function StockStatus() {
       </div>
 
       {/* Modals */}
-      {modal === 'sales'    && <RecordSalesModal    dealers={dealers} products={products} rows={rows} defaultDealerId={filters.dealer || ''} onClose={() => setModal(null)} onSaved={loadStock} />}
+      {modal === 'sales'    && <RecordSalesModal    dealers={dealers} products={products} rows={rows} defaultDealerId={isDealer ? dealers[0]?._id : (filters.dealer || '')} onClose={() => setModal(null)} onSaved={loadStock} />}
       {modal === 'adjust'   && <StockAdjustmentModal dealers={dealers} products={products} onClose={() => setModal(null)} onSaved={loadStock} />}
       {modal === 'transfer' && <StockTransferModal  dealers={dealers} products={products} onClose={() => setModal(null)} onSaved={loadStock} />}
     </div>
