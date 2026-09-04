@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { dealerPortalService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { PageLoader } from '../components/common/Spinner';
-import { FiUser, FiPhone, FiMapPin, FiCreditCard, FiShoppingBag, FiDollarSign, FiFileText, FiAlertCircle, FiTrendingUp, FiClock } from 'react-icons/fi';
+import { FiUser, FiPhone, FiMapPin, FiCreditCard, FiShoppingBag, FiDollarSign, FiFileText, FiAlertCircle, FiTrendingUp, FiClock, FiPackage } from 'react-icons/fi';
 
 const fmt = (n) => new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 0 }).format(n || 0);
+const fmtN = (n) => new Intl.NumberFormat('en-NP').format(n || 0);
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NP') : '—';
 
 const STATUS_COLORS = {
@@ -39,7 +40,7 @@ const KPI = ({ icon: Icon, label, value, color = 'blue', sub }) => (
   </div>
 );
 
-const TABS = ['Orders', 'Payments'];
+const TABS = ['Orders', 'Stock', 'Payments'];
 
 export default function DealerPortal() {
   const { user } = useAuth();
@@ -47,6 +48,7 @@ export default function DealerPortal() {
   const [profile, setProfile]   = useState(null);
   const [orders, setOrders]     = useState([]);
   const [payments, setPayments] = useState([]);
+  const [stock, setStock]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [tab, setTab]           = useState('Orders');
@@ -57,12 +59,14 @@ export default function DealerPortal() {
       dealerPortalService.getProfile(),
       dealerPortalService.getOrders({ limit: 50 }),
       dealerPortalService.getPayments({ limit: 50 }),
+      dealerPortalService.getStock(),
     ])
-      .then(([s, p, o, pay]) => {
+      .then(([s, p, o, pay, st]) => {
         setSummary(s.data.data);
         setProfile(p.data.data);
         setOrders(o.data.data || []);
         setPayments(pay.data.data || []);
+        setStock(st.data.data || []);
       })
       .catch(e => setError(e.response?.data?.message || 'Failed to load portal. Ask your admin to link your account to a dealer.'))
       .finally(() => setLoading(false));
@@ -100,6 +104,7 @@ export default function DealerPortal() {
         <KPI icon={FiShoppingBag}  label="Total Orders"        value={summary.totalOrders}             color="orange" />
         <KPI icon={FiClock}        label="Pending Orders"      value={summary.pendingOrders}           color="yellow" />
         <KPI icon={FiDollarSign}   label="Total Paid"          value={fmt(summary.totalPaid)}          color="teal" />
+        <KPI icon={FiPackage}      label="Products in Stock"   value={stock.filter(r => r.closingStock > 0).length} color="blue" sub={`${stock.reduce((s,r) => s + (r.closingStock||0), 0)} total units`} />
       </div>
 
       {/* Credit utilisation */}
@@ -136,7 +141,7 @@ export default function DealerPortal() {
               className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               {t}
               <span className="ml-1.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full">
-                {t === 'Orders' ? orders.length : payments.length}
+                {t === 'Orders' ? orders.length : t === 'Stock' ? stock.length : payments.length}
               </span>
             </button>
           ))}
@@ -162,6 +167,61 @@ export default function DealerPortal() {
                       </tr>
                     ))}
                   </tbody>
+                </table>
+              </div>
+            )
+        )}
+
+        {tab === 'Stock' && (
+          stock.length === 0
+            ? <Empty icon={FiPackage} msg="No stock data available yet." />
+            : (
+              <div className="table-wrapper">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Product</th>
+                      <th className="text-right">Opening</th>
+                      <th className="text-right">Dispatch</th>
+                      <th className="text-right">Sales</th>
+                      <th className="text-right">Closing</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stock.map((row, i) => {
+                      const statusColor =
+                        row.stockStatus === 'Healthy'      ? 'bg-green-100 text-green-700' :
+                        row.stockStatus === 'Low Stock'    ? 'bg-orange-100 text-orange-700' :
+                                                             'bg-red-100 text-red-700';
+                      return (
+                        <tr key={String(row.productId)}>
+                          <td className="text-slate-400 text-xs">{i + 1}</td>
+                          <td className="font-medium">{row.productName || '—'}</td>
+                          <td className="text-right text-slate-600">{fmtN(row.openingStock)}</td>
+                          <td className="text-right text-slate-600">{fmtN(row.companyDispatch)}</td>
+                          <td className="text-right text-green-600 font-medium">{fmtN(row.dealerSales)}</td>
+                          <td className="text-right font-bold text-blue-600">{fmtN(row.closingStock)}</td>
+                          <td>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>
+                              {row.stockStatus}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 dark:bg-slate-700/50 font-bold text-sm">
+                      <td colSpan={2} className="px-4 py-2.5 text-slate-600 dark:text-slate-300">TOTAL</td>
+                      <td className="px-4 py-2.5 text-right">{fmtN(stock.reduce((s, r) => s + (r.openingStock || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right">{fmtN(stock.reduce((s, r) => s + (r.companyDispatch || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-green-600">{fmtN(stock.reduce((s, r) => s + (r.dealerSales || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-blue-600">{fmtN(stock.reduce((s, r) => s + (r.closingStock || 0), 0))}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )

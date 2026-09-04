@@ -7,5 +7,6 @@ router.get('/profile',  c.getProfile);
 router.get('/orders',   c.getOrders);
 router.get('/payments', c.getPayments);
 router.get('/summary',  c.getSummary);
+router.get('/stock',    c.getStockStatus);
 
 module.exports = router;

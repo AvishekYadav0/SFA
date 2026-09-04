@@ -119,6 +119,7 @@ export const dealerPortalService = {
   getProfile:  ()       => api.get('/dealer-portal/profile'),
   getOrders:   (params) => api.get('/dealer-portal/orders',   { params }),
   getPayments: (params) => api.get('/dealer-portal/payments', { params }),
+  getStock:    ()       => api.get('/dealer-portal/stock'),
 };
 
 export const stockStatusService = {

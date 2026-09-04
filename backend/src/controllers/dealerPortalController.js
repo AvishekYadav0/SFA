@@ -1,9 +1,70 @@
 const Order      = require('../models/Order');
 const Collection = require('../models/Collection');
 const Dealer     = require('../models/Dealer');
+const DealerStockTransaction  = require('../models/DealerStockTransaction');
+const DealerProductStockSetting = require('../models/DealerProductStockSetting');
 
 // All handlers require role === 'dealer' and req.user.linkedDealer to be set.
 const getDealerId = (req) => req.user.linkedDealer;
+
+const stockAccumulators = () => ({
+  openingStock:    { $sum: { $cond: [{ $eq: ['$transactionType', 'OPENING']           }, '$quantity', 0] } },
+  companyDispatch: { $sum: { $cond: [{ $eq: ['$transactionType', 'COMPANY_DISPATCH']  }, '$quantity', 0] } },
+  transferIn:      { $sum: { $cond: [{ $eq: ['$transactionType', 'TRANSFER_IN']       }, '$quantity', 0] } },
+  adjustmentIn:    { $sum: { $cond: [{ $eq: ['$transactionType', 'ADJUSTMENT_IN']     }, '$quantity', 0] } },
+  dealerSales:     { $sum: { $cond: [{ $eq: ['$transactionType', 'DEALER_SALE']       }, '$quantity', 0] } },
+  transferOut:     { $sum: { $cond: [{ $eq: ['$transactionType', 'TRANSFER_OUT']      }, '$quantity', 0] } },
+  damage:          { $sum: { $cond: [{ $eq: ['$transactionType', 'DAMAGE']            }, '$quantity', 0] } },
+  expired:         { $sum: { $cond: [{ $eq: ['$transactionType', 'EXPIRED']           }, '$quantity', 0] } },
+  sample:          { $sum: { $cond: [{ $eq: ['$transactionType', 'SAMPLE']            }, '$quantity', 0] } },
+  promotional:     { $sum: { $cond: [{ $eq: ['$transactionType', 'PROMOTIONAL']       }, '$quantity', 0] } },
+  returnToCompany: { $sum: { $cond: [{ $eq: ['$transactionType', 'RETURN_TO_COMPANY'] }, '$quantity', 0] } },
+  adjustmentOut:   { $sum: { $cond: [{ $eq: ['$transactionType', 'ADJUSTMENT_OUT']    }, '$quantity', 0] } },
+});
+
+const closingStockExpr = {
+  $subtract: [
+    { $add: ['$openingStock', '$companyDispatch', '$transferIn', '$adjustmentIn'] },
+    { $add: ['$dealerSales', '$transferOut', '$damage', '$expired', '$sample', '$promotional', '$returnToCompany', '$adjustmentOut'] },
+  ],
+};
+
+exports.getStockStatus = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const dealerId = getDealerId(req);
+    const match = { dealer: new mongoose.Types.ObjectId(dealerId) };
+
+    const data = await DealerStockTransaction.aggregate([
+      { $match: match },
+      { $group: { _id: '$product', ...stockAccumulators() } },
+      { $addFields: { closingStock: closingStockExpr } },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: '_product' } },
+      { $unwind: { path: '$_product', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        _id: 0,
+        productId:       '$_id',
+        productName:     '$_product.productName',
+        openingStock: 1, companyDispatch: 1, dealerSales: 1, closingStock: 1,
+        transferIn: 1,  transferOut: 1,    damage: 1,     expired: 1,
+      }},
+      { $sort: { productName: 1 } },
+    ]);
+
+    const settings = await DealerProductStockSetting.find({ dealer: dealerId }).lean();
+    const settingMap = {};
+    settings.forEach(s => { settingMap[String(s.product)] = s.minimumStock; });
+
+    const result = data.map(row => {
+      const minStock = settingMap[String(row.productId)] ?? 0;
+      const closing  = row.closingStock;
+      const stockStatus = closing <= 0 ? 'Out of Stock' : closing <= minStock ? 'Low Stock' : 'Healthy';
+      return { ...row, minimumStock: minStock, stockStatus };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
 
 exports.getProfile = async (req, res) => {
   try {
