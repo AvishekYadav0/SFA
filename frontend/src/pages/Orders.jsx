@@ -96,6 +96,49 @@ const calc = (qty, rate, excAmt, vatAmt) => {
   return { basic, excise, vat, total: basic + excise + vat };
 };
 
+/* ── mobile item helpers ─────────────────────────────── */
+const MobileItemSelect = ({ value, onChange, options, placeholder }) => (
+  <select value={value} onChange={e => onChange(e.target.value)}
+    className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500">
+    {placeholder && <option value="">{placeholder}</option>}
+    {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+  </select>
+);
+
+const MobileItemTotals = ({ index, control }) => {
+  const item = useWatch({ control, name: `items.${index}` }) || {};
+  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs bg-slate-50 rounded-lg p-2">
+      <span className="text-slate-500">Rate: <span className="font-medium text-slate-700">{(+item.rate || 0).toFixed(2)}</span></span>
+      <span className="text-slate-500">Basic: <span className="font-medium text-slate-700">{c.basic.toFixed(2)}</span></span>
+      <span className="text-orange-500">Excise: <span className="font-medium">{c.excise.toFixed(2)}</span></span>
+      <span className="text-blue-500">VAT: <span className="font-medium">{c.vat.toFixed(2)}</span></span>
+      <span className="col-span-2 text-primary-600 font-bold">Total: {c.total.toFixed(2)}</span>
+    </div>
+  );
+};
+
+const MobileTotalsCard = ({ control }) => {
+  const items = useWatch({ control, name: 'items' }) || [];
+  const t = items.reduce((a, i) => {
+    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
+    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
+  }, { basic: 0, excise: 0, vat: 0, total: 0 });
+  if (!items.length) return null;
+  return (
+    <div className="p-3 bg-blue-50 border-t-2 border-blue-600">
+      <p className="text-xs font-bold text-slate-600 mb-1">ORDER TOTALS</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-slate-600">Basic: <span className="font-bold">{t.basic.toFixed(2)}</span></span>
+        <span className="text-orange-600">Excise: <span className="font-bold">{t.excise.toFixed(2)}</span></span>
+        <span className="text-blue-600">VAT: <span className="font-bold">{t.vat.toFixed(2)}</span></span>
+        <span className="text-primary-600 font-bold text-sm">Grand: {formatCurrency(t.total)}</span>
+      </div>
+    </div>
+  );
+};
+
 /* ── live row ────────────────────────────────────────── */
 const ItemRow = ({ index, control, register, setValue, remove, products, onProductChange, onCustomerTypeChange }) => {
   const item = useWatch({ control, name: `items.${index}` }) || {};
@@ -469,29 +512,29 @@ export default function Orders() {
   if (view === 'form') return (
     <div className="space-y-4">
       {/* header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
             {editData ? `Edit Order — ${editData.orderNumber}` : 'New Order Plan'}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">Excise & VAT amounts auto-filled from product • Grand Total = Basic + Excise + VAT</p>
+          <p className="text-xs text-slate-500 mt-0.5">Excise & VAT auto-filled • Grand Total = Basic + Excise + VAT</p>
         </div>
-        <button className="btn-secondary" onClick={closeForm}>← Back to List</button>
+        <button className="btn-secondary self-start sm:self-auto" onClick={closeForm}><FiArrowLeft size={14}/> Back</button>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* order header info */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">Order Information</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="label text-xs">Date *</label>
-              <input {...register('date', { required: true })} type="date" className="input text-sm" />
+              <input {...register('date', { required: true })} type="date" className="input text-sm w-full" />
             </div>
             {editData ? (
-              <div className="sm:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+              <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
                 <div className="text-xs font-semibold text-slate-600">Order Summary</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
                   <div><span className="font-medium">Order:</span> {editData.orderNumber || '—'}</div>
                   <div><span className="font-medium">Date:</span> {formatDate(editData.date)}</div>
                   <div><span className="font-medium">Dealer:</span> {editData.dealer?.dealerName || editData.dealer || '—'}</div>
@@ -516,14 +559,14 @@ export default function Orders() {
                             {assignedSalespersonLabel || 'Assigned sales officer'}
                           </option>
                         )}
-                                        {salespersons
-                                          .filter(s => String(s._id) !== assignedSalespersonId)
-                                          .map(s => <option key={s._id} value={String(s._id)}>{getStaffName(s)}</option>)}
+                        {salespersons
+                          .filter(s => String(s._id) !== assignedSalespersonId)
+                          .map(s => <option key={s._id} value={String(s._id)}>{getStaffName(s)}</option>)}
                       </select>
                     )}
                   />
                   {assignedSalespersonLabel && (
-                    <p className="text-xs text-slate-500 mt-1">Assigned from dealer: {assignedSalespersonLabel} {assignedSalespersonRole ? `(${assignedSalespersonRole})` : ''}</p>
+                    <p className="text-xs text-slate-500 mt-1">Assigned: {assignedSalespersonLabel} {assignedSalespersonRole ? `(${assignedSalespersonRole})` : ''}</p>
                   )}
                 </div>
                 <div>
@@ -542,9 +585,7 @@ export default function Orders() {
               <label className="label text-xs">Province *</label>
               <select {...register('province', { required: true })} className="input text-sm">
                 <option value="">Select Province...</option>
-                {PROVINCES.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
+                {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
@@ -559,7 +600,7 @@ export default function Orders() {
                 <option value="credit">Credit</option>
               </select>
             </div>
-            <div className="col-span-1 sm:col-span-4">
+            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
               <label className="label text-xs">Remarks</label>
               <input {...register('remarks')} className="input text-sm" placeholder="Optional remarks..." />
             </div>
@@ -574,9 +615,8 @@ export default function Orders() {
 
         {/* spreadsheet */}
         <div className="card p-0 overflow-hidden">
-          {/* sheet header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700" style={{ background: '#1e3a8a' }}>
-            <span className="text-white font-semibold text-sm">📋 Order Items Sheet</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100" style={{ background: '#1e3a8a' }}>
+            <span className="text-white font-semibold text-sm">📋 Order Items</span>
             <button type="button"
               onClick={() => append({ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 })}
               className="flex items-center gap-1 text-xs bg-white text-primary-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50">
@@ -584,50 +624,90 @@ export default function Orders() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile: card per item */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {fields.length === 0 && (
+              <p className="text-center py-8 text-slate-400 text-sm">No items. Tap "Add Row" to start.</p>
+            )}
+            {fields.map((field, index) => {
+              const MobileCard = () => {
+                const item = useWatch({ control, name: `items.${index}` }) || {};
+                const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+                const selectedProduct = products.find(p => p._id === item.product);
+                const priceWarning = item.product && item.customerType && !isPriceConfigured(selectedProduct, item.customerType);
+                return (
+                <div key={field.id} className="p-3 space-y-2 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500">Item {index + 1}</span>
+                    <button type="button" onClick={() => remove(index)} className="p-1 rounded text-red-400 hover:text-red-600"><FiMinus size={14}/></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <label className="text-xs text-slate-500 mb-0.5 block">Product</label>
+                      <MobileItemSelect index={index} field="product" value={item.product || ''}
+                        onChange={v => { setValue(`items.${index}.product`, v); handleProductChange(index, v, item.customerType); }}
+                        options={filteredProducts.map(p => ({ value: p._id, label: p.productName }))}
+                        placeholder="-- Select --" />
+                      {priceWarning && <p className="text-red-500 text-xs mt-0.5">Price not configured</p>}
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-0.5 block">Cust. Type</label>
+                      <MobileItemSelect index={index} field="customerType" value={item.customerType || 'MM'}
+                        onChange={v => { setValue(`items.${index}.customerType`, v); handleCustomerTypeChange(index, v); }}
+                        options={CUSTOMER_TYPES.map(t => ({ value: t, label: t }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-0.5 block">Quantity</label>
+                      <input {...register(`items.${index}.quantity`, { valueAsNumber: true, min: 0 })}
+                        type="number" min="0" className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 text-center" />
+                    </div>
+                  </div>
+                  <MobileItemTotals index={index} control={control} />
+                  <input type="hidden" {...register(`items.${index}.product`)} />
+                  <input type="hidden" {...register(`items.${index}.customerType`)} />
+                  <input type="hidden" {...register(`items.${index}.ml`)} />
+                  <input type="hidden" {...register(`items.${index}.up`)} />
+                  <input type="hidden" {...register(`items.${index}.productName`)} />
+                  <input type="hidden" {...register(`items.${index}.rate`, { valueAsNumber: true })} />
+                  <input type="hidden" {...register(`items.${index}.exciseAmount`, { valueAsNumber: true })} />
+                  <input type="hidden" {...register(`items.${index}.vatAmount`, { valueAsNumber: true })} />
+                </div>
+                );
+              };
+              return <MobileCard key={field.id} />;
+            <MobileTotalsCard control={control} />
+          </div>
+
+          {/* Desktop: spreadsheet table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr style={{ background: '#1e40af', color: '#fff' }}>
                   <th className="px-2 py-2.5 text-center text-xs font-semibold w-8">#</th>
                   <th className="px-2 py-2.5 text-left text-xs font-semibold min-w-40">Product Name</th>
                   <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Cust. Type</th>
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">ML</th>
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">UP</th>
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Quantity</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-24">Rate (NPR)</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amount</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise Amt</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT Amt</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-16">ML</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-16">UP</th>
+                  <th className="px-2 py-2.5 text-center text-xs font-semibold w-20">Qty</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-24">Rate</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amt</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-32" style={{ background: '#14532d' }}>Grand Total</th>
                   <th className="px-2 py-2.5 w-8"></th>
-                </tr>
-                <tr style={{ background: '#dbeafe', fontSize: '10px', color: '#475569' }}>
-                  <td></td>
-                  <td className="px-2 py-1">Select from list</td>
-                  <td className="px-2 py-1 text-center">MM / ADPL</td>
-                  <td className="px-2 py-1 text-center">Auto</td>
-                  <td className="px-2 py-1 text-center">Auto</td>
-                  <td className="px-2 py-1 text-center">Enter qty</td>
-                  <td className="px-2 py-1 text-right">Auto-filled</td>
-                  <td className="px-2 py-1 text-right font-medium text-blue-700">= Qty × Rate</td>
-                  <td className="px-2 py-1 text-right text-orange-600">Auto from product</td>
-                  <td className="px-2 py-1 text-right text-blue-600">Auto from product</td>
-                  <td className="px-2 py-1 text-right font-bold text-green-700">= Basic+Exc+VAT</td>
-                  <td></td>
                 </tr>
               </thead>
               <tbody>
                 {fields.map((field, index) => (
                   <ItemRow key={field.id} index={index} control={control} register={register}
-                    setValue={setValue} remove={remove} products={products} onProductChange={handleProductChange} onCustomerTypeChange={handleCustomerTypeChange} />
+                    setValue={setValue} remove={remove} products={products}
+                    onProductChange={handleProductChange} onCustomerTypeChange={handleCustomerTypeChange} />
                 ))}
                 {fields.length === 0 && (
-                  <tr><td colSpan={11} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
+                  <tr><td colSpan={12} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
                 )}
               </tbody>
-              <tfoot>
-                <TotalsRow control={control} />
-              </tfoot>
+              <tfoot><TotalsRow control={control} /></tfoot>
             </table>
           </div>
         </div>
@@ -739,7 +819,74 @@ export default function Orders() {
             action={canManage && <button className="btn-primary" onClick={() => openCreate(selectedProvince === '__all__' ? '' : selectedProvince)}><FiPlus />New Order</button>} />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {pagedOrders.map(o => (
+                <div key={o._id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-primary-600 text-sm">{o.orderNumber}</p>
+                      <p className="font-medium text-slate-800 dark:text-white text-sm mt-0.5">{o.dealer?.dealerName}</p>
+                      <p className="text-xs text-slate-500">{getOrderSalesperson(o)}</p>
+                    </div>
+                    <StatusBadge status={o.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{formatDate(o.date)}</span>
+                    <span className="font-bold text-slate-800 dark:text-white text-sm">{formatCurrency(o.grandTotal)}</span>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => toggleExpand(o._id)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+                      {expanded[o._id] ? <FiChevronUp size={14}/> : <FiChevronDown size={14}/>}
+                    </button>
+                    {canManage && o.status === 'pending' && (
+                      <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"><FiEdit2 size={14}/></button>
+                    )}
+                    {canApprove && o.status === 'pending' && (
+                      <>
+                        <button onClick={() => handleStatus(o._id, 'approved')} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50"><FiCheck size={14}/></button>
+                        <button onClick={() => handleStatus(o._id, 'rejected')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"><FiX size={14}/></button>
+                      </>
+                    )}
+                    {user?.role === 'admin' && (
+                      <button onClick={() => setConfirm({ open: true, id: o._id })} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"><FiTrash2 size={14}/></button>
+                    )}
+                  </div>
+                  {expanded[o._id] && (
+                    <div className="mt-2 rounded-xl border border-slate-200 overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead style={{ background: '#f1f5f9' }}>
+                          <tr>
+                            <th className="px-2 py-1.5 text-left text-slate-500">Product</th>
+                            <th className="px-2 py-1.5 text-center text-slate-500">Qty</th>
+                            <th className="px-2 py-1.5 text-right text-slate-500">Rate</th>
+                            <th className="px-2 py-1.5 text-right text-primary-600">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {o.items?.map((item, i) => (
+                            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                              <td className="px-2 py-1.5 font-medium text-slate-700">{item.productName || item.product?.productName}</td>
+                              <td className="px-2 py-1.5 text-center">{item.quantity}</td>
+                              <td className="px-2 py-1.5 text-right">{item.rate?.toFixed(2)}</td>
+                              <td className="px-2 py-1.5 text-right font-bold text-primary-600">{item.grandTotal?.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
+                          <tr>
+                            <td colSpan={3} className="px-2 py-1.5 text-right text-xs font-bold text-slate-600">TOTAL</td>
+                            <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{formatCurrency(o.grandTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead style={{ background: '#1e3a8a', color: '#fff' }}>
                   <tr>
@@ -755,8 +902,7 @@ export default function Orders() {
                 <tbody>
                   {pagedOrders.map((o, i) => (
                     <>
-                      <tr key={o._id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}
-                        className="border-b border-slate-100">
+                      <tr key={o._id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }} className="border-b border-slate-100">
                         <td className="px-4 py-3 font-bold text-primary-600">{o.orderNumber}</td>
                         <td className="px-4 py-3 text-slate-600 text-xs">{formatDate(o.date)}</td>
                         <td className="px-4 py-3 font-medium text-slate-700">{getOrderSalesperson(o)}</td>
@@ -765,32 +911,20 @@ export default function Orders() {
                         <td className="px-4 py-3 text-center"><StatusBadge status={o.status} /></td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => toggleExpand(o._id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100" title="View items">
-                              {expanded[o._id] ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                            <button onClick={() => toggleExpand(o._id)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+                              {expanded[o._id] ? <FiChevronUp size={14}/> : <FiChevronDown size={14}/>}
                             </button>
                             {canManage && o.status === 'pending' && (
-                              <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50" title="Edit">
-                                <FiEdit2 size={14} />
-                              </button>
+                              <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"><FiEdit2 size={14}/></button>
                             )}
                             {canApprove && o.status === 'pending' && (
                               <>
-                                <button onClick={() => handleStatus(o._id, 'approved')}
-                                  className="p-1.5 rounded-lg text-green-600 hover:bg-green-50" title="Approve">
-                                  <FiCheck size={14} />
-                                </button>
-                                <button onClick={() => handleStatus(o._id, 'rejected')}
-                                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Reject">
-                                  <FiX size={14} />
-                                </button>
+                                <button onClick={() => handleStatus(o._id, 'approved')} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50"><FiCheck size={14}/></button>
+                                <button onClick={() => handleStatus(o._id, 'rejected')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"><FiX size={14}/></button>
                               </>
                             )}
                             {user?.role === 'admin' && (
-                              <button onClick={() => setConfirm({ open: true, id: o._id })}
-                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Delete">
-                                <FiTrash2 size={14} />
-                              </button>
+                              <button onClick={() => setConfirm({ open: true, id: o._id })} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"><FiTrash2 size={14}/></button>
                             )}
                           </div>
                         </td>
