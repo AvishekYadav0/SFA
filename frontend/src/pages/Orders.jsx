@@ -527,9 +527,9 @@ export default function Orders() {
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">Order Information</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
+            <div className="min-w-0">
               <label className="label text-xs">Date *</label>
-              <input {...register('date', { required: true })} type="date" className="input text-sm w-full" />
+              <input {...register('date', { required: true })} type="date" className="input text-sm w-full min-w-0 block" />
             </div>
             {editData ? (
               <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">

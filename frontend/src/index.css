@@ -54,6 +54,15 @@
   .input {
     @apply w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm transition-all;
     outline: none;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  input[type="date"].input {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 0;
   }
   .input::placeholder { color: #94a3b8; }
   .input:focus { border-color: transparent; box-shadow: 0 0 0 2px #3B82F6; }
