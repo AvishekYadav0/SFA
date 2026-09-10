@@ -125,8 +125,14 @@ export default function Visits() {
 
   const onSubmit = async (data) => {
     try {
-      if (modal.data) await visitService.update(modal.data._id, data);
-      else await visitService.create(data);
+      const payload = {
+        ...data,
+        checkInTime: data.checkInTime ? new Date(data.checkInTime).toISOString() : undefined,
+        checkOutTime: data.checkOutTime ? new Date(data.checkOutTime).toISOString() : undefined,
+      };
+
+      if (modal.data) await visitService.update(modal.data._id, payload);
+      else await visitService.create(payload);
       toast.success(modal.data ? 'Updated' : 'Visit recorded');
       setModal({ open: false, data: null });
       load();
