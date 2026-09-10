@@ -107,11 +107,11 @@ const getStaffName = (staff) => staff?.fullName || staff?.name || '';
 /* ── Sales Items Spreadsheet (mirrors Orders sheet) ─── */
 const CUSTOMER_TYPES = ['MM', 'ADPL'];
 
-const calcRow = (qty, rate, excAmt, vatAmt) => {
+const calcRow = (qty, rate, excAmt, vatAmt, amountsAreLineTotals = false) => {
   const q = +qty || 0;
   const basic = q * (+rate || 0);
-  const excise = (+excAmt || 0) * q;
-  const vat = (+vatAmt || 0) * q;
+  const excise = amountsAreLineTotals ? (+excAmt || 0) : (+excAmt || 0) * q;
+  const vat = amountsAreLineTotals ? (+vatAmt || 0) : (+vatAmt || 0) * q;
   return { basic, excise, vat, total: basic + excise + vat };
 };
 
@@ -130,7 +130,7 @@ const localDateString = () => {
 
 const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
   const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
-  const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+  const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.amountsAreLineTotals);
 
   const handleProductChange = (productId) => {
     const p = products.find(x => x._id === productId);
@@ -145,6 +145,7 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
         rate: p.customerType === (item.customerType || 'MM') ? (p.customerPrice || p.rate || 0) : 0,
         exciseAmount: p.exciseAmount || 0,
         vatAmount: p.vatAmount || 0,
+        amountsAreLineTotals: false,
       });
     } else {
       onChange(index, { ...item, product: '', productName: '', ml: '', up: '', rate: 0, exciseAmount: 0, vatAmount: 0 });
@@ -152,7 +153,7 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
   };
 
   const handleCustomerTypeChange = (ct) => {
-    onChange(index, { ...item, customerType: ct, product: '', productName: '', ml: '', up: '', rate: 0, exciseAmount: 0, vatAmount: 0 });
+    onChange(index, { ...item, customerType: ct, product: '', productName: '', ml: '', up: '', rate: 0, exciseAmount: 0, vatAmount: 0, amountsAreLineTotals: false });
   };
 
   return (
@@ -204,7 +205,7 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
 
 const SalesTotalsRow = ({ items }) => {
   const t = items.reduce((a, i) => {
-    const c = calcRow(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
+    const c = calcRow(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount, i?.amountsAreLineTotals);
     return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
   }, { basic: 0, excise: 0, vat: 0, total: 0 });
   return (
@@ -887,7 +888,7 @@ export default function Sales() {
   };
 
   const computeItemTotals = (it) => {
-    const c = calcRow(it.quantity, it.rate, it.exciseAmount, it.vatAmount);
+    const c = calcRow(it.quantity, it.rate, it.exciseAmount, it.vatAmount, it.amountsAreLineTotals);
     return { basic: c.basic, exc: c.excise, vat: c.vat, total: c.total };
   };
 
@@ -907,6 +908,7 @@ export default function Sales() {
       rate: item.rate || 0,
       exciseAmount: item.exciseAmount || 0,
       vatAmount: item.vatAmount || 0,
+      amountsAreLineTotals: true,
     }));
     setManualSale({
       order: order._id,

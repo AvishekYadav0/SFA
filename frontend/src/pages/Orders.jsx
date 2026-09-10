@@ -675,6 +675,7 @@ export default function Orders() {
                 );
               };
               return <MobileCard key={field.id} />;
+            })}
             <MobileTotalsCard control={control} />
           </div>
 
