@@ -31,7 +31,17 @@ export default function Visits() {
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm();
 
+  const canViewAllStaff = ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role);
   const isManager = ['admin', 'nsm', 'rsm', 'asm'].includes(user?.role);
+  const shouldDefaultToSelf = ['rsm', 'nsm', 'asm', 'se', 'so'].includes(user?.role);
+  const currentStaffOption = user
+    ? (staffList.find(s => String(s._id) === String(user._id)) || {
+        _id: user._id,
+        name: user.name,
+        role: user.role,
+        employeeId: user.employeeId || user.role?.toUpperCase(),
+      })
+    : null;
   const selectedStaff = watch('se');
   const selectedDealer = watch('dealer');
 
@@ -54,10 +64,10 @@ export default function Visits() {
     } else {
       dealerService.getAll({ limit: 500 }).then(r => setDealers(r.data.data || [])).catch(() => {});
     }
-    if (isManager) {
+    if (canViewAllStaff) {
       userService.getAll({ limit: 200, status: 'active' }).then(r => setStaffList(r.data.data || [])).catch(() => {});
     }
-  }, [user]);
+  }, [user, canViewAllStaff]);
 
   // Managers: when staff selection changes, filter dealers by that staff member's role
   useEffect(() => {
@@ -112,9 +122,17 @@ export default function Visits() {
 
   const openCreate = () => {
     const defaults = { checkInTime: new Date().toISOString().slice(0, 16), status: 'checked-in' };
-    // SE/SO: pre-fill themselves as the staff member
-    if (!isManager) defaults.se = user._id;
+    const loggedInStaffId = user?._id ? String(user._id) : '';
+
+    // RSM/NSM/ASM should see the full hierarchy but still start with their own staff member selected.
+    if (shouldDefaultToSelf) {
+      defaults.se = loggedInStaffId;
+    }
+
     reset(defaults);
+    if (loggedInStaffId) {
+      setValue('se', loggedInStaffId);
+    }
     setFilteredDealers(isManager ? dealers : filteredDealers);
     setModal({ open: true, data: null });
   };
@@ -221,18 +239,26 @@ export default function Visits() {
       <Modal open={modal.open} onClose={() => setModal({ open: false, data: null })}
         title={modal.data ? 'Edit Visit' : 'Record Visit'} size="lg">
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Staff Member — managers see full list, SE/SO see only themselves */}
+          {/* Staff Member — admin/nsm see the full staff list, others see their own entry */}
           <div className="sm:col-span-2">
             <label className="label">Staff Member</label>
-            {isManager ? (
+            {canViewAllStaff ? (
               <select {...register('se')} className="input">
                 <option value="">— All Staff —</option>
+                {currentStaffOption && (
+                  <optgroup label="Current User">
+                    <option value={String(currentStaffOption._id)}>
+                      {currentStaffOption.name} ({currentStaffOption.employeeId || currentStaffOption.role?.toUpperCase() || 'STAFF'})
+                    </option>
+                  </optgroup>
+                )}
                 {['nsm','rsm','asm','se','so'].map(role => {
-                  const group = staffList.filter(s => s.role === role);
+                  const group = staffList.filter(s => s.role === role)
+                    .filter(s => String(s._id) !== String(currentStaffOption?._id || ''));
                   if (!group.length) return null;
                   return (
                     <optgroup key={role} label={role.toUpperCase()}>
-                      {group.map(s => <option key={s._id} value={s._id}>{s.name} ({s.employeeId || role.toUpperCase()})</option>)}
+                      {group.map(s => <option key={s._id} value={String(s._id)}>{s.name} ({s.employeeId || role.toUpperCase()})</option>)}
                     </optgroup>
                   );
                 })}
