@@ -92,20 +92,24 @@ export default function Visits() {
     if (!isManager) setFilteredDealers(dealers);
   }, [dealers, isManager]);
 
-  // When dealer is selected, auto-fill Staff Member from dealer hierarchy
+  // When dealer is selected, auto-fill Staff Member from dealer hierarchy only if none is already selected.
   useEffect(() => {
     if (!selectedDealer || !isManager) return;
+    if (selectedStaff) return;
+
     const dealer = (isManager ? filteredDealers : dealers).find(d => d._id === selectedDealer)
       || dealers.find(d => d._id === selectedDealer);
     if (!dealer) return;
+
     // Pick the most specific assigned staff from dealer hierarchy
     const staffId = dealer.so?.[0]?._id || dealer.so?.[0]
       || dealer.se?._id || dealer.se
       || dealer.asm?._id || dealer.asm
       || dealer.rsm?._id || dealer.rsm
       || dealer.nsm?._id || dealer.nsm;
+
     if (staffId) setValue('se', typeof staffId === 'object' ? String(staffId) : staffId);
-  }, [selectedDealer]);
+  }, [selectedDealer, selectedStaff, isManager, filteredDealers, dealers, setValue]);
 
   const getGPS = () => {
     setGpsLoading(true);
