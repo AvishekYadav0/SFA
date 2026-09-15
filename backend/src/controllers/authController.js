@@ -12,6 +12,30 @@ exports.checkAdmin = async (req, res) => {
   }
 };
 
+exports.registerAdmin = async (req, res) => {
+  try {
+    const adminExists = await User.exists({ role: 'admin' });
+    if (adminExists) {
+      return res.status(409).json({ success: false, message: 'An admin account already exists.' });
+    }
+
+    const { name, email, password, phone } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
+    }
+
+    const admin = await User.create({ name, email, password, phone, role: 'admin' });
+    const user = admin.toObject();
+    delete user.password;
+    res.status(201).json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;

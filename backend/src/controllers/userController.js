@@ -57,6 +57,10 @@ exports.getOne = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
+    if (req.body.role === 'admin') {
+      return res.status(409).json({ success: false, message: 'Admin accounts can only be created during initial setup.' });
+    }
+
     // Auto-populate hierarchy refs when creating a user
     const body = { ...req.body, createdBy: req.user._id };
 

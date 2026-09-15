@@ -54,11 +54,32 @@ exports.create = async (req, res) => {
     const User   = require('../models/User');
     const dealer = await Dealer.findById(req.body.dealer);
 
-    let creator = req.user;
-    if (['admin', 'nsm', 'rsm', 'asm', 'se'].includes(req.user.role) && req.body.se) {
-      creator = await User.findById(req.body.se);
-    }
+    // The form uses `se` for the selected staff member. For manager visits,
+    // hierarchyFields alone cannot populate the required visit.se field.
+    const selectedStaff = req.body.se
+      ? await User.findById(req.body.se).lean()
+      : req.user;
+    const creator = selectedStaff || req.user;
     const hierarchy = await hierarchyFields(creator);
+
+    // Visits always require a staff owner. Keep SO visits linked to their SE,
+    // while allowing managers/admins to record a visit for the selected staff.
+    if (!hierarchy.se) {
+      hierarchy.se = creator.role === 'so' ? creator.reportsTo : creator._id;
+    }
+
+    // Preserve the selected manager's scope when hierarchyFields has no
+    // manager-specific branch.
+    if (creator.role === 'nsm') hierarchy.nsm = creator._id;
+    if (creator.role === 'rsm') {
+      hierarchy.rsm = creator._id;
+      hierarchy.nsm = creator.nsm || null;
+    }
+    if (creator.role === 'asm') {
+      hierarchy.asm = creator._id;
+      hierarchy.rsm = creator.rsm || null;
+      hierarchy.nsm = creator.nsm || null;
+    }
 
     // If the selected staff is an SO, hierarchy already sets so/se correctly.
     // If the selected staff is an SE, hierarchy sets se correctly.
