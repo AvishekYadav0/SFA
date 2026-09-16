@@ -14,12 +14,12 @@ export default function Login() {
   const navigate = useNavigate();
   const [role, setRole] = useState('admin');
   const [showPass, setShowPass] = useState(false);
-  const [adminExists, setAdminExists] = useState(true);
+  const [adminLimitReached, setAdminLimitReached] = useState(false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
     authService.checkAdmin()
-      .then(res => setAdminExists(res.data.adminExists))
+      .then(res => setAdminLimitReached(res.data.adminLimitReached))
       .catch(() => {});
   }, []);
 
@@ -155,10 +155,10 @@ export default function Login() {
             </p>
           )}
 
-          {/* No admin yet */}
-          {!adminExists && (
+          {/* Additional admin account */}
+          {!adminLimitReached && (
             <p className="text-center text-blue-200 text-sm mt-5">
-              No admin account yet?{' '}
+              Need another admin account?{' '}
               <button onClick={() => navigate('/admin-register')}
                 className="text-white font-semibold underline underline-offset-2">
                 Create Admin Account

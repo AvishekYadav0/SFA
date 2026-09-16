@@ -17,11 +17,11 @@ export default function AdminRegister() {
   const [showPass, setShowPass]       = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [checking, setChecking]       = useState(true);
-  const [adminExists, setAdminExists] = useState(false);
+  const [adminLimitReached, setAdminLimitReached] = useState(false);
 
   useEffect(() => {
     authService.checkAdmin()
-      .then(res => setAdminExists(res.data.adminExists))
+      .then(res => setAdminLimitReached(res.data.adminLimitReached))
       .finally(() => setChecking(false));
   }, []);
 
@@ -44,16 +44,16 @@ export default function AdminRegister() {
     );
   }
 
-  if (adminExists) {
+  if (adminLimitReached) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 p-4">
         <div className="bg-white/10 backdrop-blur-md rounded-3xl p-10 border border-white/20 text-center max-w-sm w-full">
           <div className="w-16 h-16 bg-yellow-400/20 rounded-full flex items-center justify-center mx-auto mb-4">
             <FiTrendingUp className="text-yellow-300 text-3xl" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Admin Already Exists</h2>
+          <h2 className="text-xl font-bold text-white mb-2">Admin Limit Reached</h2>
           <p className="text-blue-200 text-sm mb-6">
-            An admin account has already been created. Please sign in to continue.
+            The maximum of 3 admin accounts has been created. Please sign in to continue.
           </p>
           <button onClick={() => navigate('/login')} className="btn-primary w-full justify-center py-3">
             Go to Sign In
