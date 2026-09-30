@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 // Collections
 const col = express.Router();
@@ -18,8 +18,12 @@ exports.collections = col;
 const vis = express.Router();
 const vc  = require('../controllers/visitController');
 vis.use(protect);
-vis.get('/',    vc.getAll); vis.post('/',   vc.create);
-vis.put('/:id', vc.update); vis.delete('/:id', vc.remove);
+vis.get('/', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.getAll);
+vis.get('/:id', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.getOne);
+vis.post('/', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.create);
+vis.patch('/:id/checkout', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.checkOut);
+vis.put('/:id', authorize('admin'), vc.update);
+vis.delete('/:id', authorize('admin'), vc.remove);
 exports.visits = vis;
 
 // Dashboard

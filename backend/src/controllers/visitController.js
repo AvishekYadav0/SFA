@@ -26,7 +26,7 @@ exports.getAll = async (req, res) => {
 
 exports.getOne = async (req, res) => {
   try {
-    const data = await Visit.findById(req.params.id)
+    const data = await Visit.findOne({ _id: req.params.id, ...scopeFilter(req) })
       .populate('dealer', 'dealerName area province')
       .populate('se so asm', 'name employeeId phone');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
@@ -89,6 +89,8 @@ exports.create = async (req, res) => {
     const data = await Visit.create({
       ...bodyRest,
       ...hierarchy,
+      checkInTime: new Date(),
+      status: 'checked-in',
       province: dealer?.province,
       district: dealer?.district,
       area:     dealer?.area,
@@ -96,20 +98,25 @@ exports.create = async (req, res) => {
     });
 
     await Dealer.findByIdAndUpdate(req.body.dealer, { lastVisitDate: new Date() });
-    res.status(201).json({ success: true, data });
+    res.status(201).json({ success: true, message: 'Visit recorded' });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
 exports.checkOut = async (req, res) => {
   try {
-    const update = {
-      status: 'checked-out',
-      checkOutTime: new Date(),
-      checkOutLat: req.body.lat,
-      checkOutLng: req.body.lng,
-    };
-    const data = await Visit.findByIdAndUpdate(req.params.id, update, { new: true });
-    if (!data) return res.status(404).json({ success: false, message: 'Not found' });
+    const data = await Visit.findOneAndUpdate(
+      { _id: req.params.id, ...scopeFilter(req), status: 'checked-in' },
+      {
+        $set: {
+          status: 'checked-out',
+          checkOutTime: new Date(),
+          checkOutLat: req.body?.lat,
+          checkOutLng: req.body?.lng,
+        },
+      },
+      { new: true }
+    );
+    if (!data) return res.status(404).json({ success: false, message: 'Visit not found or already checked out' });
     res.json({ success: true, data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };

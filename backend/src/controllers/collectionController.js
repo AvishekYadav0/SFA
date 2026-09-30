@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Collection = require('../models/Collection');
 const Dealer = require('../models/Dealer');
 const Sale = require('../models/Sale');
+const User = require('../models/User');
 const DealerLedger = require('../models/DealerLedger');
 const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 
@@ -220,9 +221,21 @@ exports.create = async (req, res) => {
 
     session.startTransaction();
     const hierarchy = await hierarchyFields(req.user);
+    const dealerSOId = dealer.so?.[0]?._id || dealer.so?.[0];
+    const dealerSOUser = dealerSOId
+      ? await User.findById(dealerSOId).select('reportsTo').lean()
+      : null;
+    const collectionHierarchy = {
+      ...hierarchy,
+      se: hierarchy.se || dealer.se?._id || dealer.se || dealerSOUser?.reportsTo || req.user._id,
+      so: hierarchy.so || dealerSOId,
+      asm: hierarchy.asm || dealer.asm?._id || dealer.asm,
+      rsm: hierarchy.rsm || dealer.rsm?._id || dealer.rsm,
+      nsm: hierarchy.nsm || dealer.nsm?._id || dealer.nsm,
+    };
     const collectionDoc = await Collection.create([{
       dealer: dealerId,
-      ...hierarchy,
+      ...collectionHierarchy,
       amount: totalAmount,
       date: req.body.collectionDate ? new Date(req.body.collectionDate) : new Date(),
       collectionDate: req.body.collectionDate ? new Date(req.body.collectionDate) : new Date(),

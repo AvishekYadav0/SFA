@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const MAX_ADMINS = 5;
+const MAX_ADMINS = 7;
 
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
 
@@ -22,7 +22,7 @@ exports.registerAdmin = async (req, res) => {
   try {
     const adminCount = await User.countDocuments({ role: 'admin' });
     if (adminCount >= MAX_ADMINS) {
-      return res.status(409).json({ success: false, message: 'The maximum of 3 admin accounts already exists.' });
+      return res.status(409).json({ success: false, message: 'The maximum of 7 admin accounts already exists.' });
     }
 
     const { name, email, password, phone } = req.body;
