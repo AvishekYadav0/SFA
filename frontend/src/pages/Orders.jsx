@@ -25,16 +25,17 @@ const PROVINCE_COLORS = [
 const PAGE_SIZE = 10;
 
 const CUSTOMER_TYPES = ['MM', 'ADPL'];
+const normalizeCustomerType = (customerType) => String(customerType || '').trim().toUpperCase();
 
 // Rate comes from product's customerPrice when customerType matches
 const getRateByCustomerType = (product, customerType) => {
   if (!product) return 0;
-  if (product.customerType === customerType) return product.customerPrice || 0;
+  if (normalizeCustomerType(product.customerType) === normalizeCustomerType(customerType)) return product.customerPrice || 0;
   return 0; // price not configured for this type
 };
 
 const isPriceConfigured = (product, customerType) =>
-  product && product.customerType === customerType && (product.customerPrice || 0) > 0;
+  product && normalizeCustomerType(product.customerType) === normalizeCustomerType(customerType) && (product.customerPrice || 0) > 0;
 
 const getDealerAssignedSalesperson = (dealer) => {
   if (!dealer) return { id: '', label: '', role: null };
@@ -144,7 +145,7 @@ const ItemRow = ({ index, control, register, setValue, remove, products, onProdu
   const item = useWatch({ control, name: `items.${index}` }) || {};
   const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
   // filter products by selected customer type
-  const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+  const filteredProducts = products.filter(p => normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM'));
   const selectedProduct = products.find(p => p._id === item.product);
   const priceWarning = item.product && item.customerType && !isPriceConfigured(selectedProduct, item.customerType);
   return (
@@ -632,7 +633,7 @@ export default function Orders() {
             {fields.map((field, index) => {
               const MobileCard = () => {
                 const item = useWatch({ control, name: `items.${index}` }) || {};
-                const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+                const filteredProducts = products.filter(p => normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM'));
                 const selectedProduct = products.find(p => p._id === item.product);
                 const priceWarning = item.product && item.customerType && !isPriceConfigured(selectedProduct, item.customerType);
                 return (

@@ -14,6 +14,8 @@ import toast from 'react-hot-toast';
 
 export default function Visits() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const canCheckOut = ['admin', 'nsm', 'rsm', 'asm', 'se', 'so'].includes(user?.role);
   const [visits, setVisits]   = useState([]);
   const [total, setTotal]     = useState(0);
   const [pages, setPages]     = useState(1);
@@ -125,7 +127,9 @@ export default function Visits() {
   };
 
   const openCreate = () => {
-    const defaults = { checkInTime: new Date().toISOString().slice(0, 16), status: 'checked-in' };
+    const now = new Date();
+    const localCheckInTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const defaults = { checkInTime: localCheckInTime, status: 'checked-in' };
     const loggedInStaffId = user?._id ? String(user._id) : '';
 
     // RSM/NSM/ASM should see the full hierarchy but still start with their own staff member selected.
@@ -168,6 +172,14 @@ export default function Visits() {
     finally { setDeleting(false); }
   };
 
+  const handleCheckOut = async (visitId) => {
+    try {
+      await visitService.checkOut(visitId);
+      toast.success('Visit checked out');
+      load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Unable to check out'); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -203,8 +215,9 @@ export default function Visits() {
                   </div>
                   {v.remarks && <p className="text-xs text-slate-400 truncate">{v.remarks}</p>}
                   <div className="flex gap-2 pt-1">
-                    <button onClick={() => openEdit(v)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600"><FiEdit2 size={14} /></button>
-                    <button onClick={() => setConfirm({ open: true, id: v._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"><FiTrash2 size={14} /></button>
+                    {canCheckOut && v.status === 'checked-in' && <button onClick={() => handleCheckOut(v._id)} className="btn-secondary text-xs"><FiClock size={14} />Update</button>}
+                    {isAdmin && <button onClick={() => openEdit(v)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600"><FiEdit2 size={14} /></button>}
+                    {isAdmin && <button onClick={() => setConfirm({ open: true, id: v._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"><FiTrash2 size={14} /></button>}
                   </div>
                 </div>
               ))}
@@ -226,8 +239,9 @@ export default function Visits() {
                       <td className="text-slate-500 text-sm max-w-32 truncate">{v.remarks || '—'}</td>
                       <td>
                         <div className="flex gap-2">
-                          <button onClick={() => openEdit(v)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600"><FiEdit2 /></button>
-                          <button onClick={() => setConfirm({ open: true, id: v._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"><FiTrash2 /></button>
+                          {canCheckOut && v.status === 'checked-in' && <button onClick={() => handleCheckOut(v._id)} className="btn-secondary text-xs"><FiClock size={14} />Update</button>}
+                          {isAdmin && <button onClick={() => openEdit(v)} className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600"><FiEdit2 /></button>}
+                          {isAdmin && <button onClick={() => setConfirm({ open: true, id: v._id })} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"><FiTrash2 /></button>}
                         </div>
                       </td>
                     </tr>
@@ -285,11 +299,11 @@ export default function Visits() {
           </div>
           <div>
             <label className="label">Check In Time</label>
-            <input {...register('checkInTime')} type="datetime-local" className="input" />
+            <input {...register('checkInTime')} type="datetime-local" readOnly className="input" />
           </div>
           <div>
             <label className="label">Check Out Time</label>
-            <input {...register('checkOutTime')} type="datetime-local" className="input" />
+            <input {...register('checkOutTime')} type="datetime-local" readOnly className="input" />
           </div>
           <div>
             <label className="label">GPS Latitude</label>

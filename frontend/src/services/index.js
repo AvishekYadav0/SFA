@@ -71,6 +71,7 @@ export const visitService = {
   getAll:  (params)   => api.get('/visits', { params }),
   getOne:  (id)       => api.get(`/visits/${id}`),
   create:  (data)     => api.post('/visits', data),
+  checkOut: (id)      => api.patch(`/visits/${id}/checkout`),
   update:  (id, data) => api.put(`/visits/${id}`, data),
   delete:  (id)       => api.delete(`/visits/${id}`),
 };

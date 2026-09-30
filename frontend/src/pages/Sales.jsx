@@ -106,6 +106,7 @@ const getStaffName = (staff) => staff?.fullName || staff?.name || '';
 
 /* ── Sales Items Spreadsheet (mirrors Orders sheet) ─── */
 const CUSTOMER_TYPES = ['MM', 'ADPL'];
+const normalizeCustomerType = (customerType) => String(customerType || '').trim().toUpperCase();
 
 const calcRow = (qty, rate, excAmt, vatAmt, amountsAreLineTotals = false) => {
   const q = +qty || 0;
@@ -129,7 +130,7 @@ const localDateString = () => {
 };
 
 const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
-  const filteredProducts = products.filter(p => p.customerType === (item.customerType || 'MM'));
+  const filteredProducts = products.filter(p => normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM'));
   const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.amountsAreLineTotals);
 
   const handleProductChange = (productId) => {
@@ -139,10 +140,10 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
         ...item,
         product: p._id,
         productName: p.productName,
-        customerType: p.customerType || item.customerType || 'MM',
+        customerType: normalizeCustomerType(p.customerType || item.customerType || 'MM'),
         ml: p.ml || '',
         up: p.up || '',
-        rate: p.customerType === (item.customerType || 'MM') ? (p.customerPrice || p.rate || 0) : 0,
+        rate: normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM') ? (p.customerPrice || p.rate || 0) : 0,
         exciseAmount: p.exciseAmount || 0,
         vatAmount: p.vatAmount || 0,
         amountsAreLineTotals: false,
