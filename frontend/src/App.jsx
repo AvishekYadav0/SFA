@@ -30,6 +30,7 @@ const Sales         = lazy(() => import('./pages/Sales'));
 const StockStatus   = lazy(() => import('./pages/StockStatus'));
 const DealerPortal  = lazy(() => import('./pages/DealerPortal'));
 const DealerDetail  = lazy(() => import('./pages/DealerDetail'));
+const DatabaseBackup = lazy(() => import('./pages/DatabaseBackup'));
 
 // Legacy pages
 const DailyVisits   = lazy(() => import('./pages/DailyVisits'));
@@ -88,6 +89,7 @@ const AppRoutes = () => {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/profile"      element={<Profile />} />
           <Route path="/settings"     element={<RoleRoute roles={['nsm','admin']}><Settings /></RoleRoute>} />
+          <Route path="/admin/backups" element={<RoleRoute roles={['admin']}><DatabaseBackup /></RoleRoute>} />
           <Route path="/lifting"      element={<Lifting />} />
           <Route path="/daily-visits" element={<DailyVisits />} />
           <Route path="/claims"       element={<Claims />} />

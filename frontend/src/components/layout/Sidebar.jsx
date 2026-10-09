@@ -4,7 +4,7 @@ import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiDollarSign, FiBarChart2, FiUser, FiSettings, FiLogOut,
   FiX, FiTrendingUp, FiMapPin, FiBell, FiTarget,
-  FiTruck, FiGitMerge, FiShoppingCart, FiHome, FiCalendar, FiLayers
+  FiTruck, FiGitMerge, FiShoppingCart, FiHome, FiCalendar, FiLayers, FiDatabase
 } from 'react-icons/fi';
 
 const NAV = [
@@ -27,6 +27,7 @@ const NAV = [
   { to: '/notifications',icon: FiBell,        label: 'Notifications',   roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/profile',      icon: FiUser,        label: 'Profile',         roles: ['nsm','rsm','asm','se','so','dealer','admin'] },
   { to: '/settings',     icon: FiSettings,    label: 'Settings',        roles: ['nsm','admin'] },
+  { to: '/admin/backups',icon: FiDatabase,    label: 'Database Backup', roles: ['admin'] },
 ];
 
 const ROLE_COLORS = {

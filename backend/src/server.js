@@ -3,9 +3,9 @@ const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
 const connectDB = require('./config/db');
+const { startBackupScheduler } = require('./services/backupService');
 
 const app = express();
-connectDB();
 
 app.use(cors({ origin: true, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
 app.options('*', cors());
@@ -15,6 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 // ── Routes ────────────────────────────────────────────────────────────────────
 const { collections, visits, dashboard, reports } = require('./routes/combined');
 app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/admin/backups', require('./routes/adminBackups'));
 app.use('/api/users',        require('./routes/users'));
 app.use('/api/dealers',      require('./routes/dealers'));
 app.use('/api/products',     require('./routes/products'));
@@ -70,4 +71,10 @@ function startServer(port, attemptsLeft = MAX_TRIES) {
   });
 }
 
-startServer(DEFAULT_PORT);
+connectDB()
+  .then(startBackupScheduler)
+  .then(() => startServer(DEFAULT_PORT))
+  .catch(err => {
+    console.error('Server startup failed:', err.message);
+    process.exit(1);
+  });

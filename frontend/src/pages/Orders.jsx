@@ -97,6 +97,15 @@ const calc = (qty, rate, excAmt, vatAmt) => {
   return { basic, excise, vat, total: basic + excise + vat };
 };
 
+const toOrderFormItem = item => {
+  const quantity = Number(item.quantity) || 0;
+  return {
+    ...item,
+    exciseAmount: quantity ? (Number(item.exciseAmount) || 0) / quantity : 0,
+    vatAmount: quantity ? (Number(item.vatAmount) || 0) / quantity : 0,
+  };
+};
+
 /* ── mobile item helpers ─────────────────────────────── */
 const MobileItemSelect = ({ value, onChange, options, placeholder }) => (
   <select value={value} onChange={e => onChange(e.target.value)}
@@ -469,7 +478,10 @@ export default function Orders() {
       province: order.province || order.dealer?.province || '',
       area: order.area || order.dealer?.address || order.dealer?.area || '',
       paymentType: order.paymentType || 'cash',
-      items: order.items?.map(i => ({ ...i, product: i.product?._id || i.product })) || [],
+      items: order.items?.map(i => ({
+        ...toOrderFormItem(i),
+        product: i.product?._id || i.product,
+      })) || [],
     });
     setView('form');
   };

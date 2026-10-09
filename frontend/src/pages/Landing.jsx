@@ -10,7 +10,7 @@ export default function Landing() {
     try {
       const res = await authService.checkAdmin();
       if (res.data.adminLimitReached) {
-        toast.error('The maximum of 3 admin accounts already exists. Please sign in.');
+        toast.error('The maximum of 8 admin accounts already exists. Please sign in.');
       } else {
         navigate('/admin-register');
       }
@@ -69,7 +69,7 @@ export default function Landing() {
         </div>
 
         <p className="text-center text-blue-300 text-xs mt-8">
-          Staff accounts are created by admins · Up to 3 admin accounts allowed
+          Staff accounts are created by admins · Up to 8 admin accounts allowed
         </p>
       </div>
     </div>

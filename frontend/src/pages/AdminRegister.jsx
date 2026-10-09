@@ -53,7 +53,7 @@ export default function AdminRegister() {
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Admin Limit Reached</h2>
           <p className="text-blue-200 text-sm mb-6">
-            The maximum of 3 admin accounts has been created. Please sign in to continue.
+            The maximum of 8 admin accounts has been created. Please sign in to continue.
           </p>
           <button onClick={() => navigate('/login')} className="btn-primary w-full justify-center py-3">
             Go to Sign In

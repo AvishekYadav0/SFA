@@ -8,6 +8,14 @@ export const authService = {
   changePassword: (data) => api.put('/auth/change-password', data),
 };
 
+export const backupService = {
+  getAll: () => api.get('/admin/backups'),
+  create: () => api.post('/admin/backups'),
+  downloadArchive: (id) => api.get(`/admin/backups/${id}/archive`, { responseType: 'blob' }),
+  download: (id) => api.get(`/admin/backups/${id}/download`, { responseType: 'blob' }),
+  remove: (id) => api.delete(`/admin/backups/${id}`),
+};
+
 export const userService = {
   getAll:          (params)   => api.get('/users', { params }),
   getOne:          (id)       => api.get(`/users/${id}`),

@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { getAll, markRead, create, deleteOne } = require('../controllers/notificationController');
-const { authenticateUser } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
-router.use(authenticateUser);
+router.use(protect);
 router.get('/',           getAll);
 router.post('/',          create);
 router.patch('/:id/read', markRead);

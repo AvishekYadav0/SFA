@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { reportService } from '../services';
 import { formatCurrency, formatDate } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
+import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { FiDownload, FiPrinter, FiBarChart2, FiRefreshCw, FiSearch, FiShare2, FiChevronUp, FiChevronDown } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
@@ -47,10 +48,18 @@ const flattenForExport = (data, columns) => {
   });
 };
 
-const exportExcel = (data, columns, filename) => {
+const exportExcel = (data, columns, filename, reportOwner) => {
   if (!data?.length) return toast.error('No data to export');
   const rows = flattenForExport(data, columns);
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const headers = Object.keys(rows[0] || {});
+  const ws = XLSX.utils.aoa_to_sheet([
+    [filename],
+    ...(reportOwner ? [[reportOwner]] : []),
+    [`Generated: ${formatDate(new Date())}`],
+    [],
+    headers,
+    ...rows.map((row) => headers.map((header) => row[header])),
+  ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, filename.slice(0, 31));
   XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -116,7 +125,13 @@ const REPORT_CONFIGS = {
     columns: [
       { key: 'orderNumber', label: 'Order #', className: 'font-medium text-primary-600' },
       { key: 'date', label: 'Date', format: 'date' },
-      { key: 'se.name', label: 'Sales Person', exportValue: (r) => r.se?.name || r.se?.fullName },
+      {
+        key: 'salesperson',
+        label: 'Sales Person',
+        exportValue: (r) => ['so', 'se', 'asm', 'rsm', 'nsm']
+          .map((role) => r[role]?.name || r[role]?.fullName)
+          .find(Boolean) || '-',
+      },
       { key: 'dealer.dealerName', label: 'Dealer' },
       { key: 'area', label: 'Area', exportValue: (r) => r.area || r.dealer?.area },
       { key: 'totalBasicAmount', label: 'Basic Amt', format: 'currency', sum: true },
@@ -130,14 +145,22 @@ const REPORT_CONFIGS = {
     fetch: (f) => reportService.collections(f),
     dateFilter: true,
     columns: [
+      { key: 'collectionNumber', label: 'Collection #', className: 'font-medium text-primary-600' },
+      { key: 'date', label: 'Date', format: 'date' },
+      {
+        key: 'salesperson',
+        label: 'Sales Person',
+        exportValue: (r) => ['so', 'se', 'asm', 'rsm', 'nsm']
+          .map((role) => r[role]?.name || r[role]?.fullName)
+          .find(Boolean) || '-',
+      },
       { key: 'dealer.dealerName', label: 'Dealer', className: 'font-medium' },
       { key: 'dealer.area', label: 'Area' },
-      { key: 'month', label: 'Month' },
-      { key: 'openingBalance', label: 'Opening Bal.', format: 'currency' },
-      { key: 'currentOrderAmount', label: 'Order Amt.', format: 'currency' },
-      { key: 'totalDue', label: 'Total Due', format: 'currency', sum: true },
-      { key: 'totalCollection', label: 'Total Coll.', format: 'currency', sum: true, className: 'text-success font-medium' },
-      { key: 'closingBalance', label: 'Closing Bal.', format: 'currency', sum: true, className: (v) => (v > 0 ? 'text-danger font-bold' : 'text-success font-bold') },
+      { key: 'province', label: 'Province' },
+      { key: 'amount', label: 'Amount', format: 'currency', sum: true, className: 'font-bold text-primary-600' },
+      { key: 'paymentType', label: 'Payment Type' },
+      { key: 'status', label: 'Status' },
+      { key: 'referenceNo', label: 'Reference', exportValue: (r) => r.referenceNo || r.reference || r.transactionId || r.chequeNumber || '-' },
     ],
   },
   lifting: {
@@ -503,12 +526,23 @@ function ReportTable({ data, columns }) {
 // ---------- main page ----------
 
 export default function Reports() {
+  const { user } = useAuth();
   const [activeReport, setActiveReport] = useState('sales');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ range: 'all', startDate: '', endDate: '', year: new Date().getFullYear() });
 
   const config = REPORT_CONFIGS[activeReport];
+  const roleLabels = {
+    se: 'Sales Executive',
+    so: 'Sales Officer',
+    asm: 'Area Sales Manager',
+    rsm: 'Regional Sales Manager',
+    nsm: 'National Sales Manager',
+  };
+  const reportOwner = user && roleLabels[user.role]
+    ? `${roleLabels[user.role]}: ${user.name || user.fullName || user.employeeId || 'Unknown'}`
+    : '';
 
   const fetchReport = async () => {
     setLoading(true);
@@ -543,7 +577,7 @@ export default function Reports() {
           <p className="text-sm text-slate-500 mt-1">Generate and export business reports</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-secondary" onClick={() => exportExcel(data, config.columns, activeReport)} disabled={!data.length}>
+          <button className="btn-secondary" onClick={() => exportExcel(data, config.columns, config.label, reportOwner)} disabled={!data.length}>
             <FiDownload />Export
           </button>
           <button className="btn-secondary" onClick={() => window.print()} disabled={!data.length}>
@@ -655,7 +689,11 @@ export default function Reports() {
 
             <div className="card p-0" id="report-print-area">
               <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-900 dark:text-white">{config.label}</h3>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">{config.label}</h3>
+                  {reportOwner && <p className="mt-1 text-xs text-slate-500">{reportOwner}</p>}
+                  <p className="mt-1 text-xs text-slate-400">Generated: {formatDate(new Date())}</p>
+                </div>
               </div>
               <div className="p-4">
                 {loading ? (

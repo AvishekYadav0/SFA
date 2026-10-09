@@ -67,7 +67,7 @@ exports.salesReport = async (req, res) => {
       ]),
       Order.find(filter)
         .populate('dealer', 'dealerName area province')
-        .populate('se', 'name fullName')
+        .populate('se so asm rsm nsm', 'name fullName')
         .sort('-date')
         .lean(),
     ]);
@@ -108,6 +108,7 @@ exports.collectionReport = async (req, res) => {
       ]),
       Collection.find(filter)
         .populate('dealer', 'dealerName area province')
+        .populate('se so asm rsm nsm', 'name fullName')
         .sort('-date')
         .lean(),
     ]);
