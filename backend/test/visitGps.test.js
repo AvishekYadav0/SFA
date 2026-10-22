@@ -5,7 +5,7 @@ const combinedVisitRouter = require('../src/routes/combined').visits;
 const { authorize } = require('../src/middleware/auth');
 const activeVisitFilter = require('../src/utils/activeVisitFilter');
 const { isDailyVisitFinalized } = require('../src/utils/dailyVisitWorkflow');
-const { validateGpsFix } = require('../src/utils/visitGps');
+const { getDealerGeofenceRadius, validateGpsFix } = require('../src/utils/visitGps');
 
 function test(name, run) {
   run();
@@ -20,7 +20,7 @@ const dealer = {
 };
 
 function coordinateNorthOfDealer(meters) {
-  return dealer.latitude + meters / 111320;
+  return dealer.latitude + meters / 111195;
 }
 
 test('check-in/out GPS validation accepts 50 m and rejects 100 m against the 75 m fence', () => {
@@ -31,6 +31,22 @@ test('check-in/out GPS validation accepts 50 m and rejects 100 m against the 75 
   assert.ok(Math.abs(at50Meters.distanceMeters - 50) < 1);
   assert.equal(at100Meters.result, 'outside_geofence');
   assert.ok(Math.abs(at100Meters.distanceMeters - 100) < 1);
+});
+
+test('configured global geofence allows GPS check-in within 3999 m regardless of the shop radius', () => {
+  const previousRadius = process.env.VISIT_GEOFENCE_RADIUS_METERS;
+  process.env.VISIT_GEOFENCE_RADIUS_METERS = '3999';
+
+  try {
+    assert.equal(getDealerGeofenceRadius(dealer), 3999);
+    const withinGlobalRadius = validateGpsFix(dealer, coordinateNorthOfDealer(3999), dealer.longitude, 10);
+    const outsideGlobalRadius = validateGpsFix(dealer, coordinateNorthOfDealer(4000), dealer.longitude, 10);
+    assert.equal(withinGlobalRadius.result, 'accepted');
+    assert.equal(outsideGlobalRadius.result, 'outside_geofence');
+  } finally {
+    if (previousRadius === undefined) delete process.env.VISIT_GEOFENCE_RADIUS_METERS;
+    else process.env.VISIT_GEOFENCE_RADIUS_METERS = previousRadius;
+  }
 });
 
 test('GPS validation rejects unapproved dealer locations and poor accuracy', () => {

@@ -17,6 +17,15 @@ function distanceInMeters(latitude1, longitude1, latitude2, longitude2) {
 }
 
 function getDealerGeofenceRadius(dealer) {
+  const configuredRadius = process.env.VISIT_GEOFENCE_RADIUS_METERS;
+  if (configuredRadius !== undefined) {
+    const radius = Number(configuredRadius);
+    if (!Number.isFinite(radius) || radius <= 0) {
+      throw new Error('VISIT_GEOFENCE_RADIUS_METERS must be a positive number of metres.');
+    }
+    return radius;
+  }
+
   const radius = Number(dealer?.geofenceRadius ?? DEFAULT_GEOFENCE_RADIUS_METERS);
   return Number.isFinite(radius) && radius > 0 ? radius : DEFAULT_GEOFENCE_RADIUS_METERS;
 }

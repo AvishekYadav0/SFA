@@ -575,7 +575,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
               <>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">
                   {isCurrent
-                    ? 'Open the approved dealer map and travel to the shop. Start the visit when you arrive; GPS Check In will then verify that you are within 75 metres.'
+                    ? `Open the approved dealer map and travel to the shop. Start the visit when you arrive; GPS Check In will then verify that you are within ${geofenceRadius.toLocaleString()} metres.`
                     : 'This stop is locked until the previous dealer visit is completed.'}
                 </p>
                 <button type="button" className="btn-primary w-full justify-center" disabled={!isCurrent || saving || activeVisitStatus !== 'clear'} onClick={() => onStart(visit)}>

@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Visit = require('../models/Visit');
 const activeVisitFilter = require('../utils/activeVisitFilter');
 const { isDailyVisitFinalized } = require('../utils/dailyVisitWorkflow');
+const { getDealerGeofenceRadius } = require('../utils/visitGps');
 const Notification = require('../models/Notification');
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -31,6 +32,9 @@ function serializeVisit(visit) {
       ? data.status
       : data.visit?.verificationStatus || (data.visit?.status === 'checked-in' ? 'in_progress' : 'pending')
   );
+  if (data.dealer?.dealerName) {
+    data.dealer.geofenceRadius = getDealerGeofenceRadius(data.dealer);
+  }
   data.sequence = Number(data.sequence) || 1;
   return data;
 }
