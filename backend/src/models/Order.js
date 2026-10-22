@@ -10,6 +10,8 @@ const orderItemSchema = new mongoose.Schema({
   rate:         { type: Number, required: true },
   exciseAmount: { type: Number, default: 0 },
   vatAmount:    { type: Number, default: 0 },
+  discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+  discountAmount: { type: Number, default: 0, min: 0 },
   basicAmount:  Number,
   grandTotal:   Number,
 });
@@ -36,6 +38,7 @@ const orderSchema = new mongoose.Schema({
   totalBasicAmount:  { type: Number, default: 0 },
   totalExciseAmount: { type: Number, default: 0 },
   totalVatAmount:    { type: Number, default: 0 },
+  totalDiscountAmount: { type: Number, default: 0 },
   grandTotal:        { type: Number, default: 0 },
 
   paymentType:  { type: String, enum: ['cash', 'bank', 'credit', 'online'], default: 'cash' },

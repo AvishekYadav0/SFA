@@ -20,6 +20,7 @@ const NAV = [
   { to: '/collection-plans', icon: FiCalendar,  label: 'Collection Plans', roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/monthly-planning', icon: FiCalendar,  label: 'Monthly Planning', roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/stock-status', icon: FiLayers,      label: 'Stock Status',    roles: ['nsm','rsm','asm','se','so','dealer','admin'] },
+  { to: '/daily-visits', icon: FiCalendar,    label: 'Daily Visits',    roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/visits',       icon: FiMapPin,      label: 'Visits',          roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/targets',      icon: FiTarget,      label: 'Targets',         roles: ['nsm','rsm','asm','se','admin'] },
   { to: '/reports',      icon: FiBarChart2,   label: 'Reports',         roles: ['nsm','rsm','asm','se','admin'] },

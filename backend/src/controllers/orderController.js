@@ -1,21 +1,30 @@
 const Order  = require('../models/Order');
 const Dealer = require('../models/Dealer');
 const { scopeFilter, hierarchyFields } = require('../middleware/auth');
+const { calculateDiscount } = require('../utils/discountPricing');
 
 const calcItems = (items = []) => items.map(item => {
   const qty    = item.quantity || 0;
   const basic  = qty * (item.rate || 0);
   const excise = (item.exciseAmount || 0) * qty;
   const vat    = (item.vatAmount    || 0) * qty;
-  return { ...item, basicAmount: basic, exciseAmount: excise, vatAmount: vat, grandTotal: basic + excise + vat };
+  const discount = calculateDiscount(basic + excise + vat, item.discountPercent);
+  return {
+    ...item,
+    basicAmount: basic,
+    exciseAmount: excise,
+    vatAmount: vat,
+    ...discount,
+  };
 });
 
 const calcTotals = (items) => items.reduce((a, i) => ({
   totalBasicAmount:  a.totalBasicAmount  + (i.basicAmount  || 0),
   totalExciseAmount: a.totalExciseAmount + (i.exciseAmount || 0),
   totalVatAmount:    a.totalVatAmount    + (i.vatAmount    || 0),
+  totalDiscountAmount: a.totalDiscountAmount + (i.discountAmount || 0),
   grandTotal:        a.grandTotal        + (i.grandTotal   || 0),
-}), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, grandTotal: 0 });
+}), { totalBasicAmount: 0, totalExciseAmount: 0, totalVatAmount: 0, totalDiscountAmount: 0, grandTotal: 0 });
 
 exports.getAll = async (req, res) => {
   try {
@@ -103,11 +112,16 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    delete req.body.totalBasicAmount;
+    delete req.body.totalExciseAmount;
+    delete req.body.totalVatAmount;
+    delete req.body.totalDiscountAmount;
+    delete req.body.grandTotal;
     if (req.body.items) {
       req.body.items = calcItems(req.body.items);
       Object.assign(req.body, calcTotals(req.body.items));
     }
-    const data = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
@@ -196,7 +210,10 @@ exports.updateStatus = async (req, res) => {
           area: data.area,
           date: data.date,
           items: data.items,
+          totalDiscountAmount: data.totalDiscountAmount || 0,
           grandTotal: data.grandTotal,
+          paidAmount: data.collectedAmount || 0,
+          remainingBalance: Math.max(0, Number(data.grandTotal || 0) - Number(data.collectedAmount || 0)),
           collectedAmount: data.collectedAmount || 0,
           paymentType: data.paymentType || 'cash',
           status: 'completed',

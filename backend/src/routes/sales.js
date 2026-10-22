@@ -7,6 +7,7 @@ const Dealer  = require('../models/Dealer');
 const Collection = require('../models/Collection');
 const DealerLedger = require('../models/DealerLedger');
 const { protect, hierarchyFields } = require('../middleware/auth');
+const { calculateDiscount } = require('../utils/discountPricing');
 
 const NEPAL_PROVINCES = [
   'Koshi Province',
@@ -36,6 +37,7 @@ async function normalizeSaleItems(items = []) {
     const basic = qty * rate;
     const excise = (Number(product.exciseAmount) || 0) * qty;
     const vat = (Number(product.vatAmount) || 0) * qty;
+    const discount = calculateDiscount(basic + excise + vat, it.discountPercent);
     return {
       ...it,
       quantity: qty,
@@ -46,7 +48,7 @@ async function normalizeSaleItems(items = []) {
       basicAmount: basic,
       exciseAmount: excise,
       vatAmount: vat,
-      grandTotal: basic + excise + vat,
+      ...discount,
     };
   }).filter(Boolean);
 }
@@ -107,6 +109,11 @@ async function postSaleAccounting({ sale, req, dealer, salesperson, collectedAmo
 
   const dueDate = sale.dueDate || addDateOnlyDays(sale.date, dealer.creditDays);
   sale.dueDate = dueDate;
+  sale.paidAmount = collectionAmount;
+  sale.remainingBalance = netOutstanding;
+  sale.paymentStatus = netOutstanding === 0
+    ? 'PAID'
+    : (collectionAmount > 0 ? 'PARTIALLY_PAID' : (dueDate < new Date() ? 'OVERDUE' : 'UNPAID'));
   await sale.save();
 
   const overdueAmount = dueDate < new Date() ? projectedOutstanding : 0;
@@ -455,6 +462,7 @@ router.post('/manual', protect, async (req, res) => {
       totalBasicAmount: orderItems.reduce((s, i) => s + (i.basicAmount || 0), 0),
       totalExciseAmount: orderItems.reduce((s, i) => s + (i.exciseAmount || 0), 0),
       totalVatAmount: orderItems.reduce((s, i) => s + (i.vatAmount || 0), 0),
+      totalDiscountAmount: orderItems.reduce((s, i) => s + (i.discountAmount || 0), 0),
       grandTotal: finalGrandTotal,
       collectedAmount: ['delivered', 'completed'].includes(status) ? finalCollected : 0,
       paymentType: paymentType || 'cash',
@@ -472,7 +480,10 @@ router.post('/manual', protect, async (req, res) => {
       province,
       area,
       items: orderItems,
+      totalDiscountAmount: orderItems.reduce((s, i) => s + (i.discountAmount || 0), 0),
       grandTotal: finalGrandTotal,
+      paidAmount: ['delivered', 'completed'].includes(status) ? finalCollected : 0,
+      remainingBalance: Math.max(0, finalGrandTotal - (['delivered', 'completed'].includes(status) ? finalCollected : 0)),
       collectedAmount: ['delivered', 'completed'].includes(status) ? finalCollected : 0,
       paymentType:    paymentType || 'cash',
       status,
@@ -592,7 +603,10 @@ router.post('/from-order', protect, async (req, res) => {
       province: province || sourceOrder.province,
       area: area || sourceOrder.area,
       items: normalizedItems,
+      totalDiscountAmount: normalizedItems.reduce((s, i) => s + (i.discountAmount || 0), 0),
       grandTotal: finalGrandTotal,
+      paidAmount: Number(finalCollected) || 0,
+      remainingBalance: Math.max(0, finalGrandTotal - (Number(finalCollected) || 0)),
       collectedAmount: finalCollected,
       paymentType: paymentType || sourceOrder.paymentType || 'cash',
       status,

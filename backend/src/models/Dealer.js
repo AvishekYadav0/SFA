@@ -17,6 +17,32 @@ const dealerSchema = new mongoose.Schema({
   region:          String,
   latitude:        Number,
   longitude:       Number,
+  geofenceRadius:  { type: Number, default: 75, min: 1 },
+  locationVerificationStatus: {
+    type: String,
+    enum: ['pending_approval', 'approved', 'rejected'],
+    default: 'pending_approval',
+  },
+  locationReviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  locationReviewedAt: Date,
+  locationRejectionReason: String,
+  locationAudit: [{
+    action: { type: String, enum: ['submitted', 'changed', 'approved', 'rejected'], required: true },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    changedAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ['pending_approval', 'approved', 'rejected'] },
+    previousLocation: {
+      latitude: Number,
+      longitude: Number,
+      geofenceRadius: Number,
+    },
+    newLocation: {
+      latitude: Number,
+      longitude: Number,
+      geofenceRadius: Number,
+    },
+    reason: String,
+  }],
 
   // Hierarchy
   se:              { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

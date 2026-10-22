@@ -133,13 +133,13 @@ exports.invoices = async (req, res) => {
 
     // Try Sale model first
     let invoices = await Sale.find({ dealer: dealerId, status: { $in: ACTIVE_SALE_STATUSES }, remainingBalance: { $gt: 0 } })
-      .select('invoiceNumber date dueDate grandTotal paidAmount remainingBalance paymentStatus')
+      .select('invoiceNumber date dueDate grandTotal totalDiscountAmount paidAmount remainingBalance paymentStatus')
       .sort({ dueDate: 1, date: 1 });
 
     // Fallback: use Orders if no Sale records exist
     if (!invoices.length) {
       const orders = await Order.find({ dealer: dealerId, status: { $in: ['approved', 'pending', 'warehouse', 'out_for_delivery', 'delivered', 'completed'] } })
-        .select('orderNumber date grandTotal collectedAmount status')
+        .select('orderNumber date grandTotal totalDiscountAmount collectedAmount status')
         .sort({ date: 1 });
       invoices = orders.map(o => ({
         _id: o._id,
@@ -147,6 +147,7 @@ exports.invoices = async (req, res) => {
         date: o.date,
         dueDate: o.date,
         grandTotal: o.grandTotal,
+        totalDiscountAmount: o.totalDiscountAmount || 0,
         paidAmount: o.collectedAmount || 0,
         remainingBalance: Math.max(0, (o.grandTotal || 0) - (o.collectedAmount || 0)),
         paymentStatus: (o.collectedAmount >= o.grandTotal) ? 'PAID' : (o.collectedAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID'),

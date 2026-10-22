@@ -1,6 +1,41 @@
 const Dealer = require('../models/Dealer');
 const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 
+function validateCoordinates(latitude, longitude) {
+  const hasLatitude = latitude !== undefined && latitude !== null && latitude !== '';
+  const hasLongitude = longitude !== undefined && longitude !== null && longitude !== '';
+  if (!hasLatitude && !hasLongitude) return { latitude: null, longitude: null };
+  if (!hasLatitude || !hasLongitude) {
+    throw new Error('Enter both latitude and longitude.');
+  }
+
+  if (
+    (typeof latitude !== 'number' && typeof latitude !== 'string')
+    || (typeof longitude !== 'number' && typeof longitude !== 'string')
+    || (typeof latitude === 'string' && !latitude.trim())
+    || (typeof longitude === 'string' && !longitude.trim())
+  ) {
+    throw new Error('Latitude and longitude must be valid numbers.');
+  }
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+  if (!Number.isFinite(parsedLatitude) || parsedLatitude < -90 || parsedLatitude > 90) {
+    throw new Error('Latitude must be a number between -90 and 90.');
+  }
+  if (!Number.isFinite(parsedLongitude) || parsedLongitude < -180 || parsedLongitude > 180) {
+    throw new Error('Longitude must be a number between -180 and 180.');
+  }
+  return { latitude: parsedLatitude, longitude: parsedLongitude };
+}
+
+function validateGeofenceRadius(radius) {
+  const parsedRadius = Number(radius);
+  if (!Number.isFinite(parsedRadius) || parsedRadius < 1) {
+    throw new Error('Geofence radius must be at least 1 metre.');
+  }
+  return parsedRadius;
+}
+
 // ── Core formula: Outstanding = openingBalance + sum(order remainingBalance) ──
 async function calcOutstanding(dealerId) {
   const Order = require('../models/Order');
@@ -107,6 +142,8 @@ exports.create = async (req, res) => {
     const creditLimit = Number(req.body.creditLimit ?? 0);
     const creditDays = Number(req.body.creditDays ?? 0);
     const openingOutstanding = Number(req.body.openingOutstanding ?? req.body.outstandingAmount ?? req.body.openingBalance ?? 0);
+    const coordinates = validateCoordinates(req.body.latitude, req.body.longitude);
+    const geofenceRadius = validateGeofenceRadius(req.body.geofenceRadius ?? 75);
 
     if (creditLimit < 0) throw new Error('Credit Limit cannot be negative.');
     if (creditDays < 0) throw new Error('Credit Days cannot be negative.');
@@ -124,6 +161,18 @@ exports.create = async (req, res) => {
       province: req.body.province?.trim(),
       district: req.body.district?.trim(),
       address: req.body.address?.trim(),
+      ...coordinates,
+      geofenceRadius,
+      locationVerificationStatus: 'pending_approval',
+      locationReviewedBy: null,
+      locationReviewedAt: null,
+      locationRejectionReason: '',
+      locationAudit: coordinates.latitude === null && geofenceRadius === 75 ? [] : [{
+        action: 'submitted',
+        changedBy: req.user._id,
+        status: 'pending_approval',
+        newLocation: { ...coordinates, geofenceRadius },
+      }],
       creditLimit,
       paymentType: req.body.paymentType || 'credit',
       creditDays,
@@ -149,13 +198,58 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'locationVerificationStatus')
+      || Object.prototype.hasOwnProperty.call(req.body, 'locationAudit')
+      || Object.prototype.hasOwnProperty.call(req.body, 'locationReviewedBy')
+      || Object.prototype.hasOwnProperty.call(req.body, 'locationReviewedAt')
+      || Object.prototype.hasOwnProperty.call(req.body, 'locationRejectionReason')) {
+      return res.status(400).json({ success: false, message: 'Location approval fields can only be changed through the location review action.' });
+    }
+
     // Accept openingOutstanding OR openingBalance — both mean the same thing
     const rawOpening = req.body.openingOutstanding ?? req.body.openingBalance;
     const openingBalance = rawOpening !== undefined ? Number(rawOpening) : undefined;
     const creditLimit    = req.body.creditLimit    !== undefined ? Number(req.body.creditLimit) : undefined;
 
     const updateData = { ...req.body };
-
+    const dealerScope = scopeFilter(req, 'dealer');
+    const hasLatitude = Object.prototype.hasOwnProperty.call(req.body, 'latitude');
+    const hasLongitude = Object.prototype.hasOwnProperty.call(req.body, 'longitude');
+    const hasRadius = Object.prototype.hasOwnProperty.call(req.body, 'geofenceRadius');
+    let locationAuditEntry;
+    if (hasLatitude || hasLongitude || hasRadius) {
+      const existing = await Dealer.findOne({ _id: req.params.id, ...dealerScope });
+      if (!existing) return res.status(404).json({ success: false, message: 'Not found' });
+      const coordinates = validateCoordinates(
+        hasLatitude ? req.body.latitude : existing.latitude,
+        hasLongitude ? req.body.longitude : existing.longitude,
+      );
+      const geofenceRadius = validateGeofenceRadius(hasRadius ? req.body.geofenceRadius : (existing.geofenceRadius ?? 75));
+      const previousLocation = {
+        latitude: existing.latitude ?? null,
+        longitude: existing.longitude ?? null,
+        geofenceRadius: existing.geofenceRadius ?? 75,
+      };
+      const newLocation = { ...coordinates, geofenceRadius };
+      const locationChanged = previousLocation.latitude !== newLocation.latitude
+        || previousLocation.longitude !== newLocation.longitude
+        || previousLocation.geofenceRadius !== newLocation.geofenceRadius;
+      Object.assign(updateData, coordinates);
+      updateData.geofenceRadius = geofenceRadius;
+      if (locationChanged) {
+        updateData.locationVerificationStatus = 'pending_approval';
+        updateData.locationReviewedBy = null;
+        updateData.locationReviewedAt = null;
+        updateData.locationRejectionReason = '';
+        locationAuditEntry = {
+          action: 'changed',
+          changedBy: req.user._id,
+          status: 'pending_approval',
+          previousLocation,
+          newLocation,
+        };
+      }
+    }
     // Always save as openingBalance in DB, also update all related fields
     if (openingBalance !== undefined) {
       updateData.openingBalance                = openingBalance;
@@ -170,11 +264,18 @@ exports.update = async (req, res) => {
     delete updateData.outstandingAmount;
     delete updateData.availableCredit;
 
-    await Dealer.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: false });
+    const updateOperation = { $set: updateData };
+    if (locationAuditEntry) updateOperation.$push = { locationAudit: locationAuditEntry };
+    const updated = await Dealer.findOneAndUpdate(
+      { _id: req.params.id, ...dealerScope },
+      updateOperation,
+      { new: true, runValidators: false },
+    );
+    if (!updated) return res.status(404).json({ success: false, message: 'Not found' });
 
     // Recalculate live outstanding using new openingBalance
     const { outstandingAmount, availableCredit } = await syncOutstanding(req.params.id);
-    const data = await Dealer.findById(req.params.id)
+    const data = await Dealer.findOne({ _id: req.params.id, ...dealerScope })
       .populate('se so asm rsm nsm', 'name employeeId phone');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
 
@@ -186,9 +287,79 @@ exports.update = async (req, res) => {
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
+exports.verifyLocation = async (req, res) => {
+  try {
+    const { status, reason } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Choose Approved or Rejected.' });
+    }
+    const dealer = await Dealer.findById(req.params.id);
+    if (!dealer) return res.status(404).json({ success: false, message: 'Not found' });
+    const coordinates = validateCoordinates(dealer.latitude, dealer.longitude);
+    if (coordinates.latitude === null) {
+      throw new Error('Add the dealer shop coordinates before reviewing this location.');
+    }
+    validateGeofenceRadius(dealer.geofenceRadius ?? 75);
+
+    const rejectionReason = status === 'rejected' ? String(reason || '').trim() : '';
+    const update = {
+      locationVerificationStatus: status,
+      locationReviewedBy: req.user._id,
+      locationReviewedAt: new Date(),
+      locationRejectionReason: rejectionReason,
+    };
+    const updated = await Dealer.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        latitude: dealer.latitude ?? null,
+        longitude: dealer.longitude ?? null,
+        $and: [
+          { $or: [{ geofenceRadius: dealer.geofenceRadius ?? 75 }, { geofenceRadius: null }] },
+          { $or: [
+            { locationVerificationStatus: dealer.locationVerificationStatus },
+            { locationVerificationStatus: { $exists: false } },
+          ] },
+        ],
+      },
+      {
+        $set: update,
+        $push: {
+          locationAudit: {
+            action: status,
+            changedBy: req.user._id,
+            status,
+            previousLocation: {
+              latitude: dealer.latitude,
+              longitude: dealer.longitude,
+              geofenceRadius: dealer.geofenceRadius ?? 75,
+            },
+            newLocation: {
+              latitude: dealer.latitude,
+              longitude: dealer.longitude,
+              geofenceRadius: dealer.geofenceRadius ?? 75,
+            },
+            reason: rejectionReason,
+          },
+        },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      return res.status(409).json({ success: false, message: 'Dealer location changed during review. Reload it and review the current coordinates.' });
+    }
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
-    await Dealer.findByIdAndDelete(req.params.id);
+    const data = await Dealer.findOneAndDelete({
+      _id: req.params.id,
+      ...scopeFilter(req, 'dealer'),
+    });
+    if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, message: 'Deleted' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };

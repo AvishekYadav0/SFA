@@ -89,12 +89,17 @@ const getOrderSalesperson = (order) => {
 };
 
 /* ── helpers ─────────────────────────────────────────── */
-const calc = (qty, rate, excAmt, vatAmt) => {
+const calc = (qty, rate, excAmt, vatAmt, discountPercent = 0) => {
   const q = +qty || 0;
   const basic = q * (+rate || 0);
   const excise = (+excAmt || 0) * q;
   const vat = (+vatAmt || 0) * q;
-  return { basic, excise, vat, total: basic + excise + vat };
+  const subtotal = basic + excise + vat;
+  const percent = Number(discountPercent) || 0;
+  const discountAmount = percent >= 0 && percent <= 100
+    ? Math.round((subtotal * percent / 100) * 100) / 100
+    : 0;
+  return { basic, excise, vat, discountAmount, total: Math.round((subtotal - discountAmount) * 100) / 100 };
 };
 
 const toOrderFormItem = item => {
@@ -117,13 +122,14 @@ const MobileItemSelect = ({ value, onChange, options, placeholder }) => (
 
 const MobileItemTotals = ({ index, control }) => {
   const item = useWatch({ control, name: `items.${index}` }) || {};
-  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.discountPercent);
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs bg-slate-50 rounded-lg p-2">
       <span className="text-slate-500">Rate: <span className="font-medium text-slate-700">{(+item.rate || 0).toFixed(2)}</span></span>
       <span className="text-slate-500">Basic: <span className="font-medium text-slate-700">{c.basic.toFixed(2)}</span></span>
       <span className="text-orange-500">Excise: <span className="font-medium">{c.excise.toFixed(2)}</span></span>
       <span className="text-blue-500">VAT: <span className="font-medium">{c.vat.toFixed(2)}</span></span>
+      <span className="text-slate-500">Discount: <span className="font-medium">{Number(item.discountPercent) || 0}% ({c.discountAmount.toFixed(2)})</span></span>
       <span className="col-span-2 text-primary-600 font-bold">Total: {c.total.toFixed(2)}</span>
     </div>
   );
@@ -132,9 +138,9 @@ const MobileItemTotals = ({ index, control }) => {
 const MobileTotalsCard = ({ control }) => {
   const items = useWatch({ control, name: 'items' }) || [];
   const t = items.reduce((a, i) => {
-    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
-    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
-  }, { basic: 0, excise: 0, vat: 0, total: 0 });
+    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount, i?.discountPercent);
+    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, discount: a.discount + c.discountAmount, total: a.total + c.total };
+  }, { basic: 0, excise: 0, vat: 0, discount: 0, total: 0 });
   if (!items.length) return null;
   return (
     <div className="p-3 bg-blue-50 border-t-2 border-blue-600">
@@ -143,6 +149,7 @@ const MobileTotalsCard = ({ control }) => {
         <span className="text-slate-600">Basic: <span className="font-bold">{t.basic.toFixed(2)}</span></span>
         <span className="text-orange-600">Excise: <span className="font-bold">{t.excise.toFixed(2)}</span></span>
         <span className="text-blue-600">VAT: <span className="font-bold">{t.vat.toFixed(2)}</span></span>
+        <span className="text-slate-600">Discount: <span className="font-bold">{formatCurrency(t.discount)}</span></span>
         <span className="text-primary-600 font-bold text-sm">Grand: {formatCurrency(t.total)}</span>
       </div>
     </div>
@@ -152,7 +159,7 @@ const MobileTotalsCard = ({ control }) => {
 /* ── live row ────────────────────────────────────────── */
 const ItemRow = ({ index, control, register, setValue, remove, products, onProductChange, onCustomerTypeChange }) => {
   const item = useWatch({ control, name: `items.${index}` }) || {};
-  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount);
+  const c = calc(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.discountPercent);
   // filter products by selected customer type
   const filteredProducts = products.filter(p => normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM'));
   const selectedProduct = products.find(p => p._id === item.product);
@@ -205,6 +212,12 @@ const ItemRow = ({ index, control, register, setValue, remove, products, onProdu
           type="number" step="0.01" min="0" readOnly
           className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-blue-50 text-blue-600 text-right" />
       </td>
+      <td className="px-2 py-1.5">
+        <input {...register(`items.${index}.discountPercent`, { valueAsNumber: true, min: 0, max: 100 })}
+          type="number" step="0.01" min="0" max="100"
+          className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right text-xs text-red-600">{c.discountAmount.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{c.total.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-center">
         <button type="button" onClick={() => remove(index)}
@@ -225,15 +238,17 @@ const ItemRow = ({ index, control, register, setValue, remove, products, onProdu
 const TotalsRow = ({ control }) => {
   const items = useWatch({ control, name: 'items' }) || [];
   const t = items.reduce((a, i) => {
-    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount);
-    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
-  }, { basic: 0, excise: 0, vat: 0, total: 0 });
+    const c = calc(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount, i?.discountPercent);
+    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, discount: a.discount + c.discountAmount, total: a.total + c.total };
+  }, { basic: 0, excise: 0, vat: 0, discount: 0, total: 0 });
   return (
     <tr style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
       <td colSpan={7} className="px-3 py-2 text-xs font-bold text-slate-600 text-right">TOTALS →</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-slate-800">{t.basic.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-orange-600">{t.excise.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-blue-600">{t.vat.toFixed(2)}</td>
+      <td></td>
+      <td className="px-2 py-2 text-right text-xs font-bold text-red-600">{t.discount.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(t.total)}</td>
       <td></td>
     </tr>
@@ -258,6 +273,8 @@ const OrderDetail = ({ order }) => (
               <th className="px-3 py-2 text-right text-slate-500">Basic Amt</th>
               <th className="px-3 py-2 text-right text-orange-500">Excise Amt</th>
               <th className="px-3 py-2 text-right text-blue-500">VAT Amt</th>
+              <th className="px-3 py-2 text-right text-slate-500">Discount %</th>
+              <th className="px-3 py-2 text-right text-red-500">Discount Amt</th>
               <th className="px-3 py-2 text-right text-primary-600">Grand Total</th>
             </tr>
           </thead>
@@ -274,6 +291,8 @@ const OrderDetail = ({ order }) => (
                 <td className="px-3 py-1.5 text-right font-medium">{item.basicAmount?.toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-right text-orange-600">{item.exciseAmount?.toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-right text-blue-600">{item.vatAmount?.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-right">{Number(item.discountPercent || 0).toFixed(2)}%</td>
+                <td className="px-3 py-1.5 text-right text-red-600">{Number(item.discountAmount || 0).toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-right font-bold text-primary-600">{item.grandTotal?.toFixed(2)}</td>
               </tr>
             ))}
@@ -284,6 +303,8 @@ const OrderDetail = ({ order }) => (
               <td className="px-3 py-2 text-right text-xs font-bold">{order.totalBasicAmount?.toFixed(2)}</td>
               <td className="px-3 py-2 text-right text-xs font-bold text-orange-600">{order.totalExciseAmount?.toFixed(2)}</td>
               <td className="px-3 py-2 text-right text-xs font-bold text-blue-600">{order.totalVatAmount?.toFixed(2)}</td>
+              <td></td>
+              <td className="px-3 py-2 text-right text-xs font-bold text-red-600">{Number(order.totalDiscountAmount || 0).toFixed(2)}</td>
               <td className="px-3 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(order.grandTotal)}</td>
             </tr>
           </tfoot>
@@ -316,7 +337,7 @@ export default function Orders() {
   const [products, setProducts] = useState([]);
 
   const { register, handleSubmit, reset, control, setValue, formState: { isSubmitting } } = useForm({
-    defaultValues: { date: new Date().toISOString().split('T')[0], paymentType: 'cash', items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }] }
+    defaultValues: { date: new Date().toISOString().split('T')[0], paymentType: 'cash', items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }] }
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
   const selectedSalesperson = useWatch({ control, name: 'salesperson' });
@@ -350,7 +371,7 @@ export default function Orders() {
         province,
         area,
         paymentType: 'cash',
-        items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+        items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
       });
       setDealerWarning(assignment.id ? '' : 'No assigned employee found for selected dealer.');
       setAssignedSalespersonId(String(assignment.id || ''));
@@ -463,7 +484,7 @@ export default function Orders() {
       date: new Date().toISOString().split('T')[0],
       province: prefillProvince && prefillProvince !== '__unassigned__' ? prefillProvince : '',
       paymentType: 'cash',
-      items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+      items: [{ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
     });
     setView('form');
   };
@@ -481,6 +502,7 @@ export default function Orders() {
       items: order.items?.map(i => ({
         ...toOrderFormItem(i),
         product: i.product?._id || i.product,
+        discountPercent: Number(i.discountPercent) || 0,
       })) || [],
     });
     setView('form');
@@ -493,9 +515,10 @@ export default function Orders() {
       // Validate all items have a configured price
       const invalid = data.items?.some(item => {
         const p = products.find(x => x._id === item.product);
-        return !isPriceConfigured(p, item.customerType);
+        const discountPercent = Number(item.discountPercent) || 0;
+        return !isPriceConfigured(p, item.customerType) || discountPercent < 0 || discountPercent > 100;
       });
-      if (invalid) return toast.error('Price is not configured for the selected customer type.');
+      if (invalid) return toast.error('Check each product price and ensure discounts are between 0% and 100%.');
 
       if (editData) await crud.update(editData._id, data);
       else await crud.create(data);
@@ -530,7 +553,7 @@ export default function Orders() {
           <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
             {editData ? `Edit Order — ${editData.orderNumber}` : 'New Order Plan'}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">Excise & VAT auto-filled • Grand Total = Basic + Excise + VAT</p>
+          <p className="text-xs text-slate-500 mt-0.5">Excise & VAT auto-filled • Grand Total = Basic + Excise + VAT − Discount</p>
         </div>
         <button className="btn-secondary self-start sm:self-auto" onClick={closeForm}><FiArrowLeft size={14}/> Back</button>
       </div>
@@ -631,7 +654,7 @@ export default function Orders() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100" style={{ background: '#1e3a8a' }}>
             <span className="text-white font-semibold text-sm">📋 Order Items</span>
             <button type="button"
-              onClick={() => append({ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 })}
+              onClick={() => append({ product: '', customerType: 'MM', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 })}
               className="flex items-center gap-1 text-xs bg-white text-primary-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50">
               <FiPlus size={12} /> Add Row
             </button>
@@ -674,6 +697,12 @@ export default function Orders() {
                       <input {...register(`items.${index}.quantity`, { valueAsNumber: true, min: 0 })}
                         type="number" min="0" className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 text-center" />
                     </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-0.5 block">Discount % (0–100)</label>
+                      <input {...register(`items.${index}.discountPercent`, { valueAsNumber: true, min: 0, max: 100 })}
+                        type="number" min="0" max="100" step="0.01"
+                        className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 text-right" />
+                    </div>
                   </div>
                   <MobileItemTotals index={index} control={control} />
                   <input type="hidden" {...register(`items.${index}.product`)} />
@@ -707,6 +736,8 @@ export default function Orders() {
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amt</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-20" style={{ background: '#7f1d1d' }}>Discount %</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-semibold w-24" style={{ background: '#7f1d1d' }}>Discount Amt</th>
                   <th className="px-2 py-2.5 text-right text-xs font-semibold w-32" style={{ background: '#14532d' }}>Grand Total</th>
                   <th className="px-2 py-2.5 w-8"></th>
                 </tr>
@@ -718,7 +749,7 @@ export default function Orders() {
                     onProductChange={handleProductChange} onCustomerTypeChange={handleCustomerTypeChange} />
                 ))}
                 {fields.length === 0 && (
-                  <tr><td colSpan={12} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
+                  <tr><td colSpan={14} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
                 )}
               </tbody>
               <tfoot><TotalsRow control={control} /></tfoot>
@@ -874,6 +905,7 @@ export default function Orders() {
                             <th className="px-2 py-1.5 text-left text-slate-500">Product</th>
                             <th className="px-2 py-1.5 text-center text-slate-500">Qty</th>
                             <th className="px-2 py-1.5 text-right text-slate-500">Rate</th>
+                            <th className="px-2 py-1.5 text-right text-slate-500">Discount</th>
                             <th className="px-2 py-1.5 text-right text-primary-600">Total</th>
                           </tr>
                         </thead>
@@ -883,13 +915,14 @@ export default function Orders() {
                               <td className="px-2 py-1.5 font-medium text-slate-700">{item.productName || item.product?.productName}</td>
                               <td className="px-2 py-1.5 text-center">{item.quantity}</td>
                               <td className="px-2 py-1.5 text-right">{item.rate?.toFixed(2)}</td>
+                              <td className="px-2 py-1.5 text-right text-red-600">{Number(item.discountPercent || 0).toFixed(2)}% ({Number(item.discountAmount || 0).toFixed(2)})</td>
                               <td className="px-2 py-1.5 text-right font-bold text-primary-600">{item.grandTotal?.toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
                           <tr>
-                            <td colSpan={3} className="px-2 py-1.5 text-right text-xs font-bold text-slate-600">TOTAL</td>
+                            <td colSpan={4} className="px-2 py-1.5 text-right text-xs font-bold text-slate-600">TOTAL · Discount {formatCurrency(o.totalDiscountAmount || 0)}</td>
                             <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{formatCurrency(o.grandTotal)}</td>
                           </tr>
                         </tfoot>

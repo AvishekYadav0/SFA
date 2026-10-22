@@ -262,6 +262,7 @@ export default function Collections() {
                         <th className="px-3 py-2 text-left">Invoice</th>
                         <th className="px-3 py-2 text-left">Order Date</th>
                         <th className="px-3 py-2 text-right">Total</th>
+                        <th className="px-3 py-2 text-right">Discount</th>
                         <th className="px-3 py-2 text-right">Remaining</th>
                         {!useFifo && <th className="px-3 py-2 text-center">Select</th>}
                         {!useFifo && <th className="px-3 py-2 text-right">Pay Amount</th>}
@@ -269,9 +270,9 @@ export default function Collections() {
                     </thead>
                     <tbody>
                       {loadingInvoices ? (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-500">Loading invoices…</td></tr>
+                        <tr><td colSpan={useFifo ? 5 : 7} className="p-4 text-center text-slate-500">Loading invoices…</td></tr>
                       ) : invoices.length === 0 ? (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-500">Select a dealer to show outstanding invoices.</td></tr>
+                        <tr><td colSpan={useFifo ? 5 : 7} className="p-4 text-center text-slate-500">Select a dealer to show outstanding invoices.</td></tr>
                       ) : invoices.map((invoice) => (
                         <tr key={invoice._id}
                           className={`border-b border-slate-100 ${
@@ -282,6 +283,7 @@ export default function Collections() {
                             {invoice.date ? new Date(invoice.date).toLocaleDateString() : '—'}
                           </td>
                           <td className="px-3 py-2 text-right text-xs font-medium">{formatCurrency(invoice.grandTotal)}</td>
+                          <td className="px-3 py-2 text-right text-xs text-red-600">{formatCurrency(invoice.totalDiscountAmount || 0)}</td>
                           <td className="px-3 py-2 text-right text-xs font-bold text-red-600">{formatCurrency(invoice.remainingBalance)}</td>
                           {!useFifo && (
                             <td className="px-3 py-2 text-center">

@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { dealerService, userService } from '../services';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge, formatCurrency } from '../components/common/index.jsx';
 import { PageLoader } from '../components/common/Spinner';
 import {
-  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink, FiUserPlus, FiChevronRight
+  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiArrowLeft, FiShoppingBag, FiLink, FiUserPlus, FiChevronRight, FiCrosshair
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -30,6 +32,13 @@ const PROVINCE_COLORS = [
   { bg: 'bg-teal-50 dark:bg-teal-900/20',     border: 'border-teal-200 dark:border-teal-700',     icon: 'bg-teal-500',    text: 'text-teal-700 dark:text-teal-300'   },
   { bg: 'bg-red-50 dark:bg-red-900/20',       border: 'border-red-200 dark:border-red-700',       icon: 'bg-red-500',     text: 'text-red-700 dark:text-red-300'     },
 ];
+
+const dealerMapMarkerIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:22px;height:22px;background:#2563eb;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 1px 4px #0008"></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 22],
+});
 
 const getDealerStaff = (dealer) => {
   const roles = [
@@ -70,7 +79,7 @@ export default function Dealers() {
   const [allUsers, setAllUsers]                 = useState([]);
   const [allSOs, setAllSOs]                     = useState([]);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, getValues, watch, setValue, formState: { errors, isSubmitting } } = useForm();
 
   const fetchAll = async () => {
     setLoading(true);
@@ -139,6 +148,9 @@ export default function Dealers() {
     reset({
       province,
       status: 'active',
+      latitude: null,
+      longitude: null,
+      geofenceRadius: 75,
       creditLimit: 0,
       paymentType: 'credit',
       creditDays: 0,
@@ -152,6 +164,7 @@ export default function Dealers() {
   const openEdit = (d) => {
     reset({
       ...d,
+      geofenceRadius: d.geofenceRadius ?? 75,
       openingOutstanding: d.openingBalance || d.originalOpeningOutstanding || d.openingOutstanding || 0,
       openingBalanceDate: d.openingBalanceDate
         ? new Date(d.openingBalanceDate).toISOString().slice(0, 10)
@@ -162,18 +175,38 @@ export default function Dealers() {
 
   const onSubmit = async (data) => {
     try {
+      const payload = { ...data };
+      delete payload.locationVerificationStatus;
+      delete payload.locationAudit;
+      delete payload.locationReviewedBy;
+      delete payload.locationReviewedAt;
+      delete payload.locationRejectionReason;
       if (modal.data) {
-        const res = await dealerService.update(modal.data._id, data);
+        const res = await dealerService.update(modal.data._id, payload);
         // Immediately update local state with returned data (includes recalculated outstanding)
         const updated = res.data.data;
         setAllData(prev => prev.map(d => d._id === updated._id ? updated : d));
       } else {
-        await dealerService.create(data);
+        await dealerService.create(payload);
       }
       toast.success(modal.data ? 'Dealer updated!' : 'Dealer added!');
       setModal({ open: false, data: null, province: '' });
       fetchAll(); // full refresh to ensure consistency
     } catch (err) { toast.error(err.response?.data?.message || 'Error saving dealer'); }
+  };
+
+  const handleLocationVerification = async (status) => {
+    if (!modal.data) return;
+    try {
+      const res = await dealerService.verifyLocation(modal.data._id, { status });
+      const updated = res.data.data;
+      setAllData(prev => prev.map(dealer => dealer._id === updated._id ? updated : dealer));
+      setModal(prev => ({ ...prev, data: updated }));
+      setValue('locationVerificationStatus', updated.locationVerificationStatus);
+      toast.success(status === 'approved' ? 'Dealer location approved.' : 'Dealer location rejected.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Unable to review dealer location.');
+    }
   };
 
   const handleDelete = async () => {
@@ -255,6 +288,7 @@ export default function Dealers() {
                       <span>Limit: {formatCurrency(d.creditLimit)}</span>
                       <span className="text-red-600 font-medium">Due: {formatCurrency(d.outstandingAmount || 0)}</span>
                     </div>
+                    <LocationVerificationBadge status={d.locationVerificationStatus} />
                     <div className="flex gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
                       <button onClick={() => openSOModal(d)} className="p-1.5 hover:bg-yellow-50 rounded-lg text-yellow-600"><FiUserPlus size={14} /></button>
                       <button onClick={() => openLinkModal(d)} className={`p-1.5 rounded-lg ${d.linkedUser ? 'text-green-600' : 'text-slate-400'}`}><FiLink size={14} /></button>
@@ -278,6 +312,7 @@ export default function Dealers() {
                       <th>Credit Limit</th>
                       <th>Outstanding</th>
                       <th>Status</th>
+                      <th>GPS Verification</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -310,6 +345,7 @@ export default function Dealers() {
                         <td>{formatCurrency(d.creditLimit)}</td>
                         <td className="font-semibold text-red-600">{formatCurrency(d.outstandingAmount || 0)}</td>
                         <td><StatusBadge status={d.status} /></td>
+                        <td><LocationVerificationBadge status={d.locationVerificationStatus} /></td>
                         <td onClick={event => event.stopPropagation()}>
                           <div className="flex gap-1.5">
                             <button onClick={() => openSOModal(d)} title="Assign Sales Officers" className="p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg text-yellow-600 transition-colors"><FiUserPlus size={14} /></button>
@@ -330,7 +366,9 @@ export default function Dealers() {
 
         <DealerModal
           modal={modal} onClose={() => setModal({ open: false, data: null, province: '' })}
-          onSubmit={handleSubmit(onSubmit)} register={register} errors={errors} isSubmitting={isSubmitting}
+          onSubmit={handleSubmit(onSubmit)} onVerifyLocation={handleLocationVerification}
+          isAdmin={user?.role === 'admin'} register={register} getValues={getValues} watch={watch}
+          setValue={setValue} errors={errors} isSubmitting={isSubmitting}
         />
         <AssignSOModal
           modal={soModal} sos={allSOs}
@@ -420,7 +458,9 @@ export default function Dealers() {
 
       <DealerModal
         modal={modal} onClose={() => setModal({ open: false, data: null, province: '' })}
-        onSubmit={handleSubmit(onSubmit)} register={register} errors={errors} isSubmitting={isSubmitting}
+        onSubmit={handleSubmit(onSubmit)} onVerifyLocation={handleLocationVerification}
+        isAdmin={user?.role === 'admin'} register={register} getValues={getValues} watch={watch}
+        setValue={setValue} errors={errors} isSubmitting={isSubmitting}
       />
       <ConfirmDialog open={confirm.open} title="Delete Dealer"
         message="This will permanently delete this dealer. This action cannot be undone."
@@ -555,7 +595,113 @@ function LinkUserModal({ modal, users, onClose, onLink }) {
   );
 }
 
-function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting }) {
+function LocationVerificationBadge({ status }) {
+  const label = status === 'approved' ? 'Approved'
+    : status === 'rejected' ? 'Rejected'
+      : 'Pending Approval';
+  const className = status === 'approved'
+    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+    : status === 'rejected'
+      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+      : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
+  return <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>{label}</span>;
+}
+
+function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, register, getValues, watch, setValue, errors, isSubmitting }) {
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [locationFeedback, setLocationFeedback] = useState(null);
+  const [showMap, setShowMap] = useState(false);
+  const gpsRequestId = useRef(0);
+  const latitude = watch('latitude');
+  const longitude = watch('longitude');
+  const geofenceRadius = watch('geofenceRadius');
+  const locationStatus = modal.data?.locationVerificationStatus || 'pending_approval';
+
+  useEffect(() => {
+    gpsRequestId.current += 1;
+    setGpsLoading(false);
+    setLocationFeedback(null);
+    setShowMap(false);
+  }, [modal.open, modal.data?._id]);
+
+  const updateCoordinates = (lat, lng, message) => {
+    setValue('latitude', lat, { shouldDirty: true, shouldValidate: true });
+    setValue('longitude', lng, { shouldDirty: true, shouldValidate: true });
+    setLocationFeedback({ type: 'success', text: message });
+  };
+
+  const captureCurrentLocation = () => {
+    setLocationFeedback(null);
+    if (!window.isSecureContext) {
+      const message = 'GPS requires a secure HTTPS connection (localhost is also supported).';
+      setLocationFeedback({ type: 'error', text: message });
+      toast.error(message);
+      return;
+    }
+    if (!navigator.geolocation) {
+      const message = 'This browser does not support location access.';
+      setLocationFeedback({ type: 'error', text: message });
+      toast.error(message);
+      return;
+    }
+
+    setGpsLoading(true);
+    const requestId = ++gpsRequestId.current;
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        if (requestId !== gpsRequestId.current) return;
+        updateCoordinates(coords.latitude, coords.longitude, 'Shop location captured from your device.');
+        toast.success('GPS location captured.');
+        setGpsLoading(false);
+      },
+      (error) => {
+        if (requestId !== gpsRequestId.current) return;
+        const messages = {
+          1: 'Location permission was denied. Allow location access in your browser settings.',
+          2: 'Your current location could not be determined. Try again or select a point on the map.',
+          3: 'Location request timed out. Try again or select a point on the map.',
+        };
+        const message = messages[error.code] || 'Unable to get your current location.';
+        setLocationFeedback({ type: 'error', text: message });
+        toast.error(message);
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  const coordinateRules = (field) => ({
+    deps: [field === 'latitude' ? 'longitude' : 'latitude'],
+    setValueAs: (value) => value === '' ? null : Number(value),
+    validate: (value) => {
+      const otherValue = getValues(field === 'latitude' ? 'longitude' : 'latitude');
+      const isEmpty = value === '' || value === null || value === undefined;
+      const otherIsEmpty = otherValue === '' || otherValue === null || otherValue === undefined;
+      if (isEmpty && otherIsEmpty) return true;
+      if (isEmpty || otherIsEmpty) return 'Enter both latitude and longitude.';
+      if (!Number.isFinite(Number(value))) return 'Enter a valid number.';
+      if (field === 'latitude' && (Number(value) < -90 || Number(value) > 90)) {
+        return 'Latitude must be between -90 and 90.';
+      }
+      if (field === 'longitude' && (Number(value) < -180 || Number(value) > 180)) {
+        return 'Longitude must be between -180 and 180.';
+      }
+      return true;
+    },
+  });
+  const normalizeCoordinate = (value) => value === '' || value === null || value === undefined ? null : Number(value);
+  const locationHasChanged = Boolean(modal.data) && (
+    normalizeCoordinate(latitude) !== normalizeCoordinate(modal.data.latitude)
+    || normalizeCoordinate(longitude) !== normalizeCoordinate(modal.data.longitude)
+    || Number(geofenceRadius ?? 75) !== Number(modal.data.geofenceRadius ?? 75)
+  );
+  const canReviewLocation = modal.data
+    && !locationHasChanged
+    && latitude !== null && latitude !== undefined && latitude !== ''
+    && longitude !== null && longitude !== undefined && longitude !== ''
+    && Number.isFinite(Number(latitude))
+    && Number.isFinite(Number(longitude));
+
   return (
     <Modal open={modal.open} onClose={onClose}
       title={modal.data ? 'Edit Dealer' : 'Add Dealer'} size="md">
@@ -612,6 +758,100 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
         <div>
           <label className="label">Address</label>
           <input {...register('address')} className="input" placeholder="e.g. New Road, Kathmandu" />
+        </div>
+
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Dealer Location &amp; GPS Verification</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Add the dealer shop's verified coordinates using GPS or the map.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Shop Latitude</label>
+              <input {...register('latitude', coordinateRules('latitude'))} type="number" step="any" min="-90" max="90" className="input" placeholder="Enter latitude" />
+              {errors.latitude && <p className="text-red-500 text-xs mt-1">{errors.latitude.message}</p>}
+            </div>
+            <div>
+              <label className="label">Shop Longitude</label>
+              <input {...register('longitude', coordinateRules('longitude'))} type="number" step="any" min="-180" max="180" className="input" placeholder="Enter longitude" />
+              {errors.longitude && <p className="text-red-500 text-xs mt-1">{errors.longitude.message}</p>}
+            </div>
+            <div>
+              <label className="label">Geofence Radius (metres)</label>
+              <input
+                {...register('geofenceRadius', {
+                  valueAsNumber: true,
+                  validate: value => Number.isFinite(value) && value >= 1 || 'Radius must be at least 1 metre.',
+                })}
+                type="number" min="1" step="1" className="input"
+              />
+              {errors.geofenceRadius && <p className="text-red-500 text-xs mt-1">{errors.geofenceRadius.message}</p>}
+            </div>
+            <div>
+              <label className="label">GPS Verification Status</label>
+              <div className="flex min-h-[42px] items-center">
+                <LocationVerificationBadge status={locationStatus} />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button type="button" className="btn-secondary text-sm" onClick={captureCurrentLocation} disabled={gpsLoading}>
+              <FiCrosshair size={15} />
+              {gpsLoading ? 'Getting GPS...' : 'Get Current GPS'}
+            </button>
+            <button type="button" className="btn-secondary text-sm" onClick={() => setShowMap(value => !value)}>
+              <FiMapPin size={15} />
+              {showMap ? 'Hide Map' : 'Select Location on Map'}
+            </button>
+          </div>
+          {locationFeedback && (
+            <p role="status" className={`text-xs mt-2 ${locationFeedback.type === 'error' ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
+              {locationFeedback.text}
+            </p>
+          )}
+          {locationHasChanged && (
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+              Saving a location or radius change returns this dealer to Pending Approval. An Admin must review it before geofence verification can resume.
+            </p>
+          )}
+          {isAdmin && modal.data && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <button
+                type="button"
+                className="btn-success text-sm"
+                onClick={() => onVerifyLocation('approved')}
+                disabled={!canReviewLocation || locationStatus === 'approved'}
+              >
+                Approve Location
+              </button>
+              <button
+                type="button"
+                className="btn-danger text-sm"
+                onClick={() => onVerifyLocation('rejected')}
+                disabled={!canReviewLocation || locationStatus === 'rejected'}
+              >
+                Reject Location
+              </button>
+              {!canReviewLocation && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Save valid coordinates and radius before reviewing.
+                </span>
+              )}
+            </div>
+          )}
+          {showMap && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Click the map or drag the pin to the dealer shop's exact location.</p>
+              <DealerLocationMap
+                latitude={latitude}
+                longitude={longitude}
+                onLocationSelect={(lat, lng) => {
+                  updateCoordinates(lat, lng, 'Dealer location selected on the map.');
+                  toast.success('Dealer location selected on the map.');
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
@@ -678,4 +918,73 @@ function DealerModal({ modal, onClose, onSubmit, register, errors, isSubmitting 
       </form>
     </Modal>
   );
+}
+
+function DealerLocationMap({ latitude, longitude, onLocationSelect }) {
+  const mapElement = useRef(null);
+  const mapInstance = useRef(null);
+  const marker = useRef(null);
+  const onLocationSelectRef = useRef(onLocationSelect);
+  onLocationSelectRef.current = onLocationSelect;
+
+  useEffect(() => {
+    const map = L.map(mapElement.current, { scrollWheelZoom: false });
+    mapInstance.current = map;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+    map.fitBounds([[26.3, 80.0], [30.5, 88.3]]);
+
+    map.on('click', ({ latlng }) => {
+      const position = [latlng.lat, latlng.lng];
+      if (!marker.current) {
+        marker.current = L.marker(position, { draggable: true, icon: dealerMapMarkerIcon }).addTo(map);
+        marker.current.on('dragend', () => {
+          const moved = marker.current.getLatLng();
+          onLocationSelectRef.current(moved.lat, moved.lng);
+        });
+      } else {
+        marker.current.setLatLng(position);
+      }
+      onLocationSelectRef.current(latlng.lat, latlng.lng);
+    });
+    window.setTimeout(() => map.invalidateSize(), 0);
+
+    return () => {
+      map.remove();
+      mapInstance.current = null;
+      marker.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    if (latitude === null || latitude === undefined || latitude === ''
+      || longitude === null || longitude === undefined || longitude === '') {
+      marker.current?.remove();
+      marker.current = null;
+      return;
+    }
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      marker.current?.remove();
+      marker.current = null;
+      return;
+    }
+    if (!marker.current) {
+      marker.current = L.marker([lat, lng], { draggable: true, icon: dealerMapMarkerIcon }).addTo(map);
+      marker.current.on('dragend', () => {
+        const moved = marker.current.getLatLng();
+        onLocationSelectRef.current(moved.lat, moved.lng);
+      });
+      map.setView([lat, lng], 15);
+    } else {
+      marker.current.setLatLng([lat, lng]);
+    }
+  }, [latitude, longitude]);
+
+  return <div ref={mapElement} className="h-64 w-full rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden" aria-label="Select dealer location on map" />;
 }

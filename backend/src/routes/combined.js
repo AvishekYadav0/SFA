@@ -18,6 +18,8 @@ exports.collections = col;
 const vis = express.Router();
 const vc  = require('../controllers/visitController');
 vis.use(protect);
+vis.get('/stats', authorize('admin'), vc.getStats);
+vis.get('/active', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.getActive);
 vis.get('/', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.getAll);
 vis.get('/:id', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.getOne);
 vis.post('/', authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), vc.create);

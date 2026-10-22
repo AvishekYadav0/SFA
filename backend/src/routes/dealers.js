@@ -9,6 +9,7 @@ r.get('/:id/collections', c.collections);
 r.get('/:id/invoices',    c.invoices);
 r.get('/:id/ledger',      c.ledger);
 r.get('/:id',  c.getOne);
+r.patch('/:id/location-verification', authorize('admin'), c.verifyLocation);
 r.post('/',    authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.create);
 r.put('/:id',  authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.update);
 r.delete('/:id', authorize('admin', 'nsm'), c.remove);

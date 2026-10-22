@@ -151,15 +151,21 @@ const serializeDatabase = async function* () {
 const PDF_FIELDS = {
   orders: [
     'orderNumber', 'date', 'dealer', 'se', 'so', 'province', 'district', 'area', 'region', 'items',
-    'totalBasicAmount', 'totalExciseAmount', 'totalVatAmount', 'grandTotal',
+    'totalBasicAmount', 'totalExciseAmount', 'totalVatAmount', 'totalDiscountAmount', 'grandTotal',
     'paymentType', 'status', 'remarks', 'createdAt',
   ],
   visits: [
-    'date', 'dealer', 'se', 'so', 'checkInTime', 'checkOutTime', 'checkInLat',
-    'checkInLng', 'checkOutLat', 'checkOutLng', 'remarks', 'complaint',
+    'date', 'dealer', 'se', 'so', 'asm', 'rsm', 'nsm', 'checkInTime', 'checkOutTime', 'checkInLat',
+    'checkInLng', 'checkInAccuracyMeters', 'deviceCapturedAt', 'checkInEmployee',
+    'dailyVisit', 'checkOutLat', 'checkOutLng', 'locationVerificationStatus',
+    'checkOutAccuracyMeters', 'checkOutDistanceMeters', 'checkOutLocationVerificationStatus',
+    'checkOutDurationSeconds', 'checkOutReviewStatus', 'checkOutReviewReason',
+    'checkOutReviewResolvedAt', 'checkOutReviewResolvedBy', 'checkOutAttempts', 'checkOutReviewHistory',
+    'checkOutSecurityEvents', 'verificationStatus', 'verificationReason', 'verificationHistory',
+    'locationDistanceMeters', 'locationVerificationMessage', 'remarks', 'complaint',
     'marketSurvey', 'competitorInfo', 'province', 'district', 'area', 'status',
   ],
-  dailyvisits: ['date', 'staff', 'dealer', 'visitStatus', 'notes', 'assignedBy', 'createdAt'],
+  dailyvisits: ['date', 'staff', 'dealer', 'sequence', 'status', 'workflowStatus', 'verificationStatus', 'statusHistory', 'verificationHistory', 'checkInAttempts', 'visitStatus', 'requiresReview', 'reviewHistory', 'reviewResolvedAt', 'reviewResolvedBy', 'reviewResolution', 'reviewResolutionNote', 'visit', 'notes', 'assignedBy', 'createdAt'],
   collections: [
     'collectionNumber', 'date', 'collectionDate', 'dealer', 'se', 'amount',
     'paymentType', 'allocations', 'reference', 'bankName', 'referenceNo',
@@ -172,6 +178,8 @@ const PDF_FIELDS = {
   dealers: [
     'dealerName', 'dealerCode', 'distributor', 'ownerName', 'phone', 'email',
     'address', 'province', 'district', 'area', 'region', 'creditLimit',
+    'latitude', 'longitude', 'geofenceRadius', 'locationVerificationStatus', 'locationReviewedBy',
+    'locationReviewedAt', 'locationRejectionReason', 'locationAudit',
     'outstandingAmount', 'dueAmount', 'overdueAmount', 'paymentType',
     'creditStatus', 'status', 'totalOrders', 'monthlyPurchase', 'yearlyPurchase',
   ],
@@ -185,7 +193,7 @@ const PDF_FIELDS = {
   ],
   sales: [
     'invoiceNumber', 'manualSaleId', 'orderNumber', 'date', 'dueDate', 'dealer',
-    'salesperson', 'staffId', 'province', 'area', 'items', 'grandTotal',
+    'salesperson', 'staffId', 'province', 'area', 'items', 'totalDiscountAmount', 'grandTotal',
     'collectedAmount', 'paidAmount', 'remainingBalance', 'paymentStatus',
     'paymentType', 'status', 'remarks',
   ],
@@ -254,10 +262,21 @@ const PDF_LABELS = {
   checkInLng: 'Check-in longitude',
   checkOutLat: 'Check-out latitude',
   checkOutLng: 'Check-out longitude',
+  checkOutAccuracyMeters: 'Check-out GPS accuracy (m)',
+  checkOutDistanceMeters: 'Check-out dealer distance (m)',
+  checkOutLocationVerificationStatus: 'Check-out GPS status',
+  checkOutDurationSeconds: 'Visit duration (seconds)',
+  checkOutReviewStatus: 'Check-out review status',
+  checkOutReviewReason: 'Check-out review reason',
+  checkOutReviewResolvedAt: 'Check-out review resolved at',
+  checkOutReviewResolvedBy: 'Check-out review resolved by',
+  checkOutAttempts: 'Check-out GPS attempts',
+  checkOutReviewHistory: 'Check-out review audit history',
   grandTotal: 'Grand total',
   totalBasicAmount: 'Basic total',
   totalExciseAmount: 'Excise total',
   totalVatAmount: 'VAT total',
+  totalDiscountAmount: 'Discount total',
   customerType: 'Customer type',
   visitStatus: 'Visit status',
   outstandingAmount: 'Outstanding amount',
@@ -287,6 +306,8 @@ const REFERENCE_TYPES = {
   verifiedBy: 'users',
   approvedBy: 'users',
   assignedBy: 'users',
+  checkOutReviewResolvedBy: 'users',
+  reviewResolvedBy: 'users',
   createdBy: 'users',
   setBy: 'users',
   markedBy: 'users',
@@ -298,7 +319,7 @@ const REFERENCE_TYPES = {
 
 const ITEM_FIELDS = [
   'productName', 'ml', 'up', 'customerType', 'quantity', 'rate',
-  'discountAmount', 'grandTotal',
+  'discountPercent', 'discountAmount', 'grandTotal',
 ];
 const ALLOCATION_FIELDS = ['invoiceNumber', 'amount'];
 

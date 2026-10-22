@@ -36,6 +36,7 @@ export const dealerService = {
   getLedger:      (id)     => api.get(`/dealers/${id}/ledger`),
   create:    (data)        => api.post('/dealers', data),
   update:    (id, data)    => api.put(`/dealers/${id}`, data),
+  verifyLocation: (id, data) => api.patch(`/dealers/${id}/location-verification`, data),
   delete:    (id)          => api.delete(`/dealers/${id}`),
   assignSO:  (id, assignments) => api.put(`/dealers/${id}/assign-so`, {
     ...(assignments.some?.(item => typeof item === 'object') ? { assignments } : { soIds: assignments }),
@@ -78,8 +79,10 @@ export const collectionService = {
 export const visitService = {
   getAll:  (params)   => api.get('/visits', { params }),
   getOne:  (id)       => api.get(`/visits/${id}`),
+  getActive: ()       => api.get('/visits/active'),
   create:  (data)     => api.post('/visits', data),
-  checkOut: (id)      => api.patch(`/visits/${id}/checkout`),
+  checkOut: (id, data) => api.patch(`/visits/${id}/checkout`, data),
+  resolveCheckOut: (id, data) => api.patch(`/visits/${id}/resolve-checkout`, data),
   update:  (id, data) => api.put(`/visits/${id}`, data),
   delete:  (id)       => api.delete(`/visits/${id}`),
 };
@@ -143,6 +146,16 @@ export const stockStatusService = {
 // legacy compat
 export const salespersonService = userService;
 export const liftingService     = { getAll: (p) => api.get('/lifting', { params: p }), create: (d) => api.post('/lifting', d), update: (id, d) => api.put(`/lifting/${id}`, d), delete: (id) => api.delete(`/lifting/${id}`) };
-export const dailyVisitService  = { getAll: (p) => api.get('/daily-visits', { params: p }), create: (d) => api.post('/daily-visits', d), update: (id, d) => api.patch(`/daily-visits/${id}`, d), remove: (id) => api.delete(`/daily-visits/${id}`) };
+export const dailyVisitService  = {
+  getAll: (params) => api.get('/daily-visits', { params }),
+  getReport: (params) => api.get('/daily-visits/report', { params }),
+  getMine: (date) => api.get('/daily-visits/mine', { params: { date } }),
+  assign: (data) => api.post('/daily-visits', data),
+  start: (id) => api.patch(`/daily-visits/${id}/start`),
+  recordGpsFailure: (id, data) => api.post(`/daily-visits/${id}/gps-failure`, data),
+  resolveReview: (id, data) => api.patch(`/daily-visits/${id}/resolve-review`, data),
+  update: (id, data) => api.patch(`/daily-visits/${id}`, data),
+  remove: (id) => api.delete(`/daily-visits/${id}`),
+};
 export const claimService       = { getAll: () => api.get('/claims'), create: (d) => api.post('/claims', d), process: (id, d) => api.post(`/claims/${id}/action`, d) };
 export const saleService        = { getRecords: (p) => api.get('/sales/records', { params: p }) };

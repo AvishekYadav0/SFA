@@ -108,12 +108,17 @@ const getStaffName = (staff) => staff?.fullName || staff?.name || '';
 const CUSTOMER_TYPES = ['MM', 'ADPL'];
 const normalizeCustomerType = (customerType) => String(customerType || '').trim().toUpperCase();
 
-const calcRow = (qty, rate, excAmt, vatAmt, amountsAreLineTotals = false) => {
+const calcRow = (qty, rate, excAmt, vatAmt, discountPercent = 0, amountsAreLineTotals = false) => {
   const q = +qty || 0;
   const basic = q * (+rate || 0);
   const excise = amountsAreLineTotals ? (+excAmt || 0) : (+excAmt || 0) * q;
   const vat = amountsAreLineTotals ? (+vatAmt || 0) : (+vatAmt || 0) * q;
-  return { basic, excise, vat, total: basic + excise + vat };
+  const subtotal = basic + excise + vat;
+  const percent = Number(discountPercent) || 0;
+  const discountAmount = percent >= 0 && percent <= 100
+    ? Math.round((subtotal * percent / 100) * 100) / 100
+    : 0;
+  return { basic, excise, vat, discountAmount, total: Math.round((subtotal - discountAmount) * 100) / 100 };
 };
 
 const addCreditDays = (date, days) => {
@@ -131,7 +136,7 @@ const localDateString = () => {
 
 const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
   const filteredProducts = products.filter(p => normalizeCustomerType(p.customerType) === normalizeCustomerType(item.customerType || 'MM'));
-  const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.amountsAreLineTotals);
+  const c = calcRow(item.quantity, item.rate, item.exciseAmount, item.vatAmount, item.discountPercent, item.amountsAreLineTotals);
 
   const handleProductChange = (productId) => {
     const p = products.find(x => x._id === productId);
@@ -193,6 +198,12 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
         <input type="number" step="0.01" min="0" value={item.vatAmount} readOnly
           className="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-blue-50 text-blue-600 text-right" />
       </td>
+      <td className="px-2 py-1.5">
+        <input type="number" step="0.01" min="0" max="100" value={item.discountPercent ?? 0}
+          onChange={e => onChange(index, { ...item, discountPercent: e.target.value })}
+          className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right text-xs text-red-600">{c.discountAmount.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-right text-sm font-bold text-primary-600">{c.total.toFixed(2)}</td>
       <td className="px-2 py-1.5 text-center">
         <button type="button" onClick={() => onRemove(index)}
@@ -206,15 +217,17 @@ const SalesItemRow = ({ index, item, products, onChange, onRemove }) => {
 
 const SalesTotalsRow = ({ items }) => {
   const t = items.reduce((a, i) => {
-    const c = calcRow(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount, i?.amountsAreLineTotals);
-    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, total: a.total + c.total };
-  }, { basic: 0, excise: 0, vat: 0, total: 0 });
+    const c = calcRow(i?.quantity, i?.rate, i?.exciseAmount, i?.vatAmount, i?.discountPercent, i?.amountsAreLineTotals);
+    return { basic: a.basic + c.basic, excise: a.excise + c.excise, vat: a.vat + c.vat, discount: a.discount + c.discountAmount, total: a.total + c.total };
+  }, { basic: 0, excise: 0, vat: 0, discount: 0, total: 0 });
   return (
     <tr style={{ background: '#eff6ff', borderTop: '2px solid #2563EB' }}>
       <td colSpan={7} className="px-3 py-2 text-xs font-bold text-slate-600 text-right">TOTALS →</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-slate-800">{t.basic.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-orange-600">{t.excise.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-xs font-bold text-blue-600">{t.vat.toFixed(2)}</td>
+      <td></td>
+      <td className="px-2 py-2 text-right text-xs font-bold text-red-600">{t.discount.toFixed(2)}</td>
       <td className="px-2 py-2 text-right text-sm font-bold text-primary-600">{formatCurrency(t.total)}</td>
       <td></td>
     </tr>
@@ -640,7 +653,7 @@ export default function Sales() {
     province: '',
     area: '',
     dueDate: '',
-    items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+    items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
     grandTotal: 0,
     collectedAmount: 0,
     paymentType: 'cash',
@@ -880,7 +893,7 @@ export default function Sales() {
   const addItemRow = () => {
     setManualSale(prev => ({
       ...prev,
-      items: [...(prev.items || []), { product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+      items: [...(prev.items || []), { product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
     }));
   };
 
@@ -889,8 +902,8 @@ export default function Sales() {
   };
 
   const computeItemTotals = (it) => {
-    const c = calcRow(it.quantity, it.rate, it.exciseAmount, it.vatAmount, it.amountsAreLineTotals);
-    return { basic: c.basic, exc: c.excise, vat: c.vat, total: c.total };
+    const c = calcRow(it.quantity, it.rate, it.exciseAmount, it.vatAmount, it.discountPercent, it.amountsAreLineTotals);
+    return { basic: c.basic, exc: c.excise, vat: c.vat, discount: c.discountAmount, total: c.total };
   };
 
   const computeGrandTotal = () =>
@@ -909,6 +922,7 @@ export default function Sales() {
       rate: item.rate || 0,
       exciseAmount: item.exciseAmount || 0,
       vatAmount: item.vatAmount || 0,
+      discountPercent: item.discountPercent || 0,
       amountsAreLineTotals: true,
     }));
     setManualSale({
@@ -919,7 +933,7 @@ export default function Sales() {
       province: order.province || '',
       area: order.area || order.dealer?.address || order.dealer?.area || '',
       dueDate: '',
-      items: initialItems.length ? initialItems : [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+      items: initialItems.length ? initialItems : [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
       grandTotal: order.grandTotal || '',
       collectedAmount: order.collectedAmount || 0,
       paymentType: order.paymentMethod || 'cash',
@@ -943,7 +957,7 @@ export default function Sales() {
       province: '',
       area: '',
       dueDate: '',
-      items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+      items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
       grandTotal: '',
       collectedAmount: 0,
       paymentType: 'cash',
@@ -972,12 +986,24 @@ export default function Sales() {
 
   const submitManualSale = async () => {
     const gt = computeGrandTotal();
+    const invalidDiscount = (manualSale.items || []).some(item => {
+      const percent = Number(item.discountPercent) || 0;
+      return percent < 0 || percent > 100;
+    });
+    if (invalidDiscount) {
+      toast.error('Discount percentage must be between 0 and 100 for every item.');
+      return;
+    }
     const dealer = dealers.find(item => item._id === manualSale.dealer);
     const collected = ['delivered', 'completed'].includes(manualSale.status)
       ? Math.max(0, Number(manualSale.collectedAmount) || 0)
       : 0;
     const projectedOutstanding = Number(dealer?.outstandingAmount || 0) + Math.max(0, gt - collected);
-    if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !gt) {
+    const hasPricedItem = (manualSale.items || []).some(item => {
+      const totals = computeItemTotals(item);
+      return item.product && Number(item.quantity) > 0 && totals.basic + totals.exc + totals.vat > 0;
+    });
+    if (!manualSale.salesperson || !manualSale.dealer || !manualSale.province || !manualSale.area || !hasPricedItem) {
       toast.error('Fill dealer, salesperson, province, address, and at least one priced item before saving.');
       return;
     }
@@ -1000,12 +1026,15 @@ export default function Sales() {
           exciseAmount: Number(it.exciseAmount) || 0,
           vatAmount: Number(it.vatAmount) || 0,
           basicAmount: t.basic,
+          discountPercent: Number(it.discountPercent) || 0,
+          discountAmount: t.discount,
           grandTotal: t.total,
         };
       });
       const payload = {
         ...manualSale,
         items,
+        totalDiscountAmount: items.reduce((sum, item) => sum + item.discountAmount, 0),
         grandTotal: gt,
         collectedAmount: collected,
         paymentType: manualSale.paymentType,
@@ -1033,7 +1062,7 @@ export default function Sales() {
         province: '',
         area: '',
         dueDate: '',
-        items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0 }],
+        items: [{ product: '', productName: '', customerType: 'MM', ml: '', up: '', quantity: 1, rate: 0, exciseAmount: 0, vatAmount: 0, discountPercent: 0 }],
         grandTotal: '',
         collectedAmount: 0,
         paymentType: 'cash',
@@ -1297,6 +1326,8 @@ export default function Sales() {
                     <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>Basic Amount</th>
                     <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#92400e' }}>Excise Amt</th>
                     <th className="px-2 py-2.5 text-right text-xs font-semibold w-28" style={{ background: '#1e3a8a' }}>VAT Amt</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-20" style={{ background: '#7f1d1d' }}>Discount %</th>
+                    <th className="px-2 py-2.5 text-right text-xs font-semibold w-24" style={{ background: '#7f1d1d' }}>Discount Amt</th>
                     <th className="px-2 py-2.5 text-right text-xs font-semibold w-32" style={{ background: '#14532d' }}>Grand Total</th>
                     <th className="px-2 py-2.5 w-8"></th>
                   </tr>
@@ -1311,7 +1342,9 @@ export default function Sales() {
                     <td className="px-2 py-1 text-right font-medium text-blue-700">= Qty × Rate</td>
                     <td className="px-2 py-1 text-right text-orange-600">Auto from product</td>
                     <td className="px-2 py-1 text-right text-blue-600">Auto from product</td>
-                    <td className="px-2 py-1 text-right font-bold text-green-700">= Basic+Exc+VAT</td>
+                    <td className="px-2 py-1 text-right">Enter 0–100%</td>
+                    <td className="px-2 py-1 text-right text-red-600">Calculated</td>
+                    <td className="px-2 py-1 text-right font-bold text-green-700">= Subtotal−Discount</td>
                     <td></td>
                   </tr>
                 </thead>
@@ -1321,7 +1354,7 @@ export default function Sales() {
                       onChange={handleItemChange} onRemove={removeItemRow} />
                   ))}
                   {!manualSale.items?.length && (
-                    <tr><td colSpan={12} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
+                    <tr><td colSpan={14} className="text-center py-8 text-slate-400 text-sm">No items. Click "Add Row" to start.</td></tr>
                   )}
                 </tbody>
                 <tfoot>
