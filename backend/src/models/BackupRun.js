@@ -7,6 +7,6 @@ const backupRunSchema = new mongoose.Schema({
   error: { type: String, default: null },
   startedAt: { type: Date, required: true },
   completedAt: { type: Date, default: null },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
-module.exports = mongoose.model('BackupRun', backupRunSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('BackupRun', backupRunSchema));

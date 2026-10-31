@@ -8,8 +8,8 @@ const monthlyPlanningSchema = new mongoose.Schema({
   createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   setBy:        { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   notes:        String,
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
-monthlyPlanningSchema.index({ month: 1, year: 1 }, { unique: true });
+monthlyPlanningSchema.index({ companyId: 1, month: 1, year: 1 }, { unique: true });
 
-module.exports = mongoose.model('MonthlyPlanning', monthlyPlanningSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('MonthlyPlanning', monthlyPlanningSchema));

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../services';
 import toast from 'react-hot-toast';
 import {
-  FiTrendingUp, FiUser, FiMail, FiLock, FiPhone, FiEye, FiEyeOff, FiBriefcase
+  FiUser, FiMail, FiLock, FiPhone, FiEye, FiEyeOff, FiBriefcase
 } from 'react-icons/fi';
 import { Spinner } from '../components/common/Spinner';
 
@@ -38,7 +38,7 @@ export default function AdminRegister() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900">
+      <div className="auth-page auth-page--admin-register min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900">
         <Spinner size="lg" />
       </div>
     );
@@ -46,10 +46,10 @@ export default function AdminRegister() {
 
   if (adminLimitReached) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 p-4">
+      <div className="auth-page auth-page--admin-register min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 p-4">
         <div className="bg-white/10 backdrop-blur-md rounded-3xl p-10 border border-white/20 text-center max-w-sm w-full">
-          <div className="w-16 h-16 bg-yellow-400/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FiTrendingUp className="text-yellow-300 text-3xl" />
+          <div className="auth-brand-mark w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <img src="/icons/Screenshot%202026-10-30%20at%209.53.11%20PM.png" alt="SFA logo" className="auth-brand-logo" />
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Admin Limit Reached</h2>
           <p className="text-blue-200 text-sm mb-6">
@@ -64,13 +64,13 @@ export default function AdminRegister() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="auth-page auth-page--admin-register min-h-screen bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
 
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl mb-4">
-            <FiTrendingUp className="text-white text-3xl" />
+          <div className="auth-brand-mark inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4">
+            <img src="/icons/Screenshot%202026-10-30%20at%209.53.11%20PM.png" alt="SFA logo" className="auth-brand-logo" />
           </div>
           <h1 className="text-3xl font-bold text-white">SFA System</h1>
           <p className="text-blue-200 mt-1">Create your admin account to get started</p>

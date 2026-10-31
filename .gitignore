@@ -28,3 +28,9 @@ Thumbs.db
 # Vite cache
 .vite/
 /tmp/vite-sfa-cache/
+
+# Local database backups
+backend/secure-backup/
+
+# Local screenshots
+frontend/public/icons/Screenshot 2026-10-30 at 9.53.11 PM.png

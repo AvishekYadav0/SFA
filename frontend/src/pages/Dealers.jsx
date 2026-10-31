@@ -195,10 +195,10 @@ export default function Dealers() {
     } catch (err) { toast.error(err.response?.data?.message || 'Error saving dealer'); }
   };
 
-  const handleLocationVerification = async (status) => {
+  const handleLocationVerification = async (status, reason = '') => {
     if (!modal.data) return;
     try {
-      const res = await dealerService.verifyLocation(modal.data._id, { status });
+      const res = await dealerService.verifyLocation(modal.data._id, { status, reason });
       const updated = res.data.data;
       setAllData(prev => prev.map(dealer => dealer._id === updated._id ? updated : dealer));
       setModal(prev => ({ ...prev, data: updated }));
@@ -611,6 +611,7 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
   const [gpsLoading, setGpsLoading] = useState(false);
   const [locationFeedback, setLocationFeedback] = useState(null);
   const [showMap, setShowMap] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const gpsRequestId = useRef(0);
   const latitude = watch('latitude');
   const longitude = watch('longitude');
@@ -622,6 +623,7 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
     setGpsLoading(false);
     setLocationFeedback(null);
     setShowMap(false);
+    setRejectionReason('');
   }, [modal.open, modal.data?._id]);
 
   const updateCoordinates = (lat, lng, message) => {
@@ -815,7 +817,23 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
             </p>
           )}
           {isAdmin && modal.data && (
-            <div className="flex flex-wrap items-center gap-2 mt-3">
+            <div className="mt-3 space-y-2">
+              <label className="label text-xs" htmlFor="location-rejection-reason">Rejection reason (required when rejecting)</label>
+              <textarea
+                id="location-rejection-reason"
+                value={rejectionReason}
+                onChange={event => setRejectionReason(event.target.value)}
+                maxLength={500}
+                rows={2}
+                className="input text-sm"
+                placeholder="Explain why the submitted shop location was rejected."
+              />
+              {locationStatus === 'rejected' && modal.data.locationRejectionReason && (
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  Previous rejection: {modal.data.locationRejectionReason}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className="btn-success text-sm"
@@ -827,8 +845,8 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
               <button
                 type="button"
                 className="btn-danger text-sm"
-                onClick={() => onVerifyLocation('rejected')}
-                disabled={!canReviewLocation || locationStatus === 'rejected'}
+                onClick={() => onVerifyLocation('rejected', rejectionReason)}
+                disabled={!canReviewLocation || rejectionReason.trim().length < 3 || locationStatus === 'rejected'}
               >
                 Reject Location
               </button>
@@ -837,6 +855,7 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
                   Save valid coordinates and radius before reviewing.
                 </span>
               )}
+              </div>
             </div>
           )}
           {showMap && (

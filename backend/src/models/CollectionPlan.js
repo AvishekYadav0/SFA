@@ -12,7 +12,7 @@ const collectionPlanSchema = new mongoose.Schema({
   week4: { type: Number, default: 0, min: 0 },
   remarks: String,
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 collectionPlanSchema.virtual('totalDue').get(function () {
   return this.openingBalance + this.currentOrderAmount;
@@ -25,4 +25,4 @@ collectionPlanSchema.virtual('closingBalance').get(function () {
 });
 collectionPlanSchema.set('toJSON', { virtuals: true });
 
-module.exports = mongoose.model('CollectionPlan', collectionPlanSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('CollectionPlan', collectionPlanSchema));

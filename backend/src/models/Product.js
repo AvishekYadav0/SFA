@@ -11,6 +11,6 @@ const productSchema = new mongoose.Schema({
   vatAmount:     { type: Number, default: 0 },
   status:        { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Product', productSchema));

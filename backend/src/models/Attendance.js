@@ -9,8 +9,8 @@ const attendanceSchema = new mongoose.Schema({
   remarks:   { type: String },
   province:  { type: String },
   markedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 attendanceSchema.index({ staffId: 1, date: 1 }, { unique: true });
 
-module.exports = mongoose.model('Attendance', attendanceSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Attendance', attendanceSchema));

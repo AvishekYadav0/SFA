@@ -74,7 +74,7 @@ const dealerStockTransactionSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 dealerStockTransactionSchema.index({ dealer: 1 });
@@ -82,4 +82,4 @@ dealerStockTransactionSchema.index({ product: 1 });
 dealerStockTransactionSchema.index({ transactionDate: -1 });
 dealerStockTransactionSchema.index({ dealer: 1, product: 1, transactionDate: -1 });
 
-module.exports = mongoose.model('DealerStockTransaction', dealerStockTransactionSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('DealerStockTransaction', dealerStockTransactionSchema));

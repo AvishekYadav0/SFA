@@ -19,7 +19,7 @@ const liftingSchema = new mongoose.Schema({
   month:             String,
   year:              Number,
   createdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 liftingSchema.index({ staffId: 1, month: 1, year: 1 });
 liftingSchema.index({ order: 1 });
@@ -33,4 +33,4 @@ liftingSchema.pre('save', function (next) {
   next();
 });
 
-module.exports = mongoose.model('Lifting', liftingSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Lifting', liftingSchema));

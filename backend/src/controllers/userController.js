@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Company = require('../models/Company');
 const { userScopeFilter } = require('../middleware/auth');
 
 exports.getAll = async (req, res) => {
@@ -97,6 +98,12 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { password, ...rest } = req.body;
+    const currentUser = rest.role
+      ? await User.findById(req.params.id).select('role')
+      : null;
+    if (rest.role === 'admin' && currentUser?.role !== 'admin') {
+      return res.status(409).json({ success: false, message: 'Admin accounts must be created through company admin registration.' });
+    }
 
     // Re-stamp hierarchy refs if reportsTo changed
     if (rest.reportsTo) {
@@ -116,13 +123,25 @@ exports.update = async (req, res) => {
 
     const data = await User.findByIdAndUpdate(req.params.id, rest, { new: true });
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
+    if (currentUser?.role === 'admin' && rest.role && rest.role !== 'admin') {
+      await Company.updateOne(
+        { _id: req.company._id, adminCount: { $gt: 0 } },
+        { $inc: { adminCount: -1 } },
+      );
+    }
     res.json({ success: true, data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
 exports.remove = async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    const deleted = await User.findByIdAndDelete(req.params.id);
+    if (deleted?.role === 'admin') {
+      await Company.updateOne(
+        { _id: req.company._id, adminCount: { $gt: 0 } },
+        { $inc: { adminCount: -1 } },
+      );
+    }
     res.json({ success: true, message: 'Deleted' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };

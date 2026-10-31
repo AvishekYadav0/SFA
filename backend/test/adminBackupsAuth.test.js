@@ -1,13 +1,35 @@
 const assert = require('assert');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../src/models/User');
+const Company = require('../src/models/Company');
 
 const originalFindById = User.findById;
+const originalCompanyFindById = Company.findById;
+const originalUseDb = mongoose.connection.useDb;
 const originalJwtSecret = process.env.JWT_SECRET;
 process.env.JWT_SECRET = 'backup-auth-test-secret';
-User.findById = id => ({
-  select: async () => ({ _id: id, role: id === 'staff-id' ? 'se' : 'admin' }),
+mongoose.connection.useDb = () => ({
+  models: {
+    User: {
+      findById: id => ({
+        select: async () => ({
+          _id: id,
+          role: id === 'staff-id' ? 'se' : 'admin',
+          companyId: 'company-id',
+          tenantId: 'tenant-id',
+        }),
+      }),
+    },
+  },
+});
+Company.findById = async id => ({
+  _id: id,
+  tenantId: 'tenant-id',
+  databaseName: 'sfa_test_company',
+  status: 'active',
+  isLegacy: false,
 });
 
 const app = express();
@@ -21,7 +43,11 @@ server.once('listening', async () => {
     const anonymousResponse = await fetch(baseUrl);
     assert.strictEqual(anonymousResponse.status, 401, 'anonymous users must not access backup APIs');
 
-    const staffToken = jwt.sign({ id: 'staff-id' }, process.env.JWT_SECRET);
+    const staffToken = jwt.sign({
+      id: 'staff-id',
+      companyId: 'company-id',
+      tenantId: 'tenant-id',
+    }, process.env.JWT_SECRET);
     const staffResponse = await fetch(baseUrl, {
       headers: { Authorization: `Bearer ${staffToken}` },
     });
@@ -33,6 +59,8 @@ server.once('listening', async () => {
   } finally {
     server.close();
     User.findById = originalFindById;
+    Company.findById = originalCompanyFindById;
+    mongoose.connection.useDb = originalUseDb;
     if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = originalJwtSecret;
   }

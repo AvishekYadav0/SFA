@@ -17,7 +17,7 @@ const orderItemSchema = new mongoose.Schema({
 });
 
 const orderSchema = new mongoose.Schema({
-  orderNumber:  { type: String, unique: true },
+  orderNumber:  { type: String },
   date:         { type: Date, default: Date.now },
 
   // Hierarchy
@@ -60,22 +60,26 @@ const orderSchema = new mongoose.Schema({
 
   collectedAmount: { type: Number, default: 0 },
   createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 orderSchema.index({ se: 1, date: -1 });
 orderSchema.index({ asm: 1, date: -1 });
 orderSchema.index({ rsm: 1, date: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ dealer: 1 });
+orderSchema.index(
+  { companyId: 1, orderNumber: 1 },
+  { unique: true, partialFilterExpression: { orderNumber: { $type: 'string' } }, name: 'company_order_number_unique' }
+);
 
 orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
     let unique = false;
     while (!unique) {
-      const last = await mongoose.model('Order').findOne({}, { orderNumber: 1 }).sort({ orderNumber: -1 });
+      const last = await this.constructor.findOne({}, { orderNumber: 1 }).sort({ orderNumber: -1 });
       const lastNum = last?.orderNumber ? parseInt(last.orderNumber.replace('ORD-', '')) : 0;
       const candidate = `ORD-${String(lastNum + 1).padStart(6, '0')}`;
-      const exists = await mongoose.model('Order').findOne({ orderNumber: candidate });
+      const exists = await this.constructor.findOne({ orderNumber: candidate });
       if (!exists) {
         this.orderNumber = candidate;
         unique = true;
@@ -85,4 +89,4 @@ orderSchema.pre('save', async function (next) {
   next();
 });
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Order', orderSchema));

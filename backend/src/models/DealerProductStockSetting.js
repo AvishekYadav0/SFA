@@ -16,9 +16,9 @@ const dealerProductStockSettingSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Minimum stock must be >= 0'],
   },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 // ── Unique compound index: one setting per dealer+product ─────────────────────
 dealerProductStockSettingSchema.index({ dealer: 1, product: 1 }, { unique: true });
 
-module.exports = mongoose.model('DealerProductStockSetting', dealerProductStockSettingSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('DealerProductStockSetting', dealerProductStockSettingSchema));

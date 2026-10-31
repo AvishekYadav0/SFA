@@ -1,8 +1,16 @@
 import api from './api';
 
 export const authService = {
-  login:          (data) => api.post('/auth/login', data),
-  registerAdmin:  (data) => api.post('/auth/register-admin', data),
+  login:          (data) => api.post('/auth/login', {
+    ...data,
+    companyVerificationToken: sessionStorage.getItem('companyVerificationToken'),
+  }),
+  registerAdmin:  (data) => api.post('/auth/register-admin', {
+    ...data,
+    companyVerificationToken: sessionStorage.getItem('companyVerificationToken'),
+  }),
+  registerCompany: (data) => api.post('/auth/register-company', data),
+  verifyCompany: (data) => api.post('/auth/verify-company', data),
   getMe:          ()     => api.get('/auth/me'),
   checkAdmin:     ()     => api.get('/auth/check-admin'),
   changePassword: (data) => api.put('/auth/change-password', data),

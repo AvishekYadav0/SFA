@@ -36,7 +36,8 @@ const statusLabel = status => ({
   missed: 'Missed',
 }[status] || 'Pending');
 const isCompleteStatus = (status, visit) => ['completed', 'verified', 'suspicious', 'invalid'].includes(status)
-  && visit?.requiresReview !== true;
+  && (visit?.requiresReview !== true
+    || visit?.visitStatus === 'visited');
 const refId = value => String(value?._id || value || '');
 const MAX_GPS_ACCURACY_METERS = 50;
 const DEFAULT_GEOFENCE_RADIUS_METERS = 75;
@@ -62,6 +63,29 @@ const approvedDealerCoordinates = dealer => {
     || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
   ) return null;
   return { latitude, longitude };
+};
+const dealerGeofenceRadius = dealer => {
+  const radius = Number(dealer?.geofenceRadius);
+  return Number.isFinite(radius) && radius > 0
+    ? Math.min(radius, DEFAULT_GEOFENCE_RADIUS_METERS)
+    : DEFAULT_GEOFENCE_RADIUS_METERS;
+};
+const gpsFixError = (dealer, latitude, longitude, accuracyMeters) => {
+  const coordinates = approvedDealerCoordinates(dealer);
+  if (!coordinates) return 'Check-out is unavailable until the dealer location is approved.';
+  if (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+  ) return 'A valid GPS location is required.';
+  if (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > MAX_GPS_ACCURACY_METERS) {
+    return `GPS accuracy must be ${MAX_GPS_ACCURACY_METERS} metres or better.`;
+  }
+  const distance = distanceInMeters(latitude, longitude, coordinates.latitude, coordinates.longitude);
+  const radius = dealerGeofenceRadius(dealer);
+  if (distance > radius) {
+    return `You are about ${Math.round(distance)} m from this shop. GPS check-out requires being within ${radius} m.`;
+  }
+  return '';
 };
 const formatElapsed = seconds => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -225,6 +249,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [proximity, setProximity] = useState({ status: 'idle', distanceMeters: null, accuracyMeters: null });
   const [gpsWatchAttempt, setGpsWatchAttempt] = useState(0);
+  const latestGpsFixRef = useRef(null);
   const [showDealerMap, setShowDealerMap] = useState(visit.showDealerMap === true);
   const [now, setNow] = useState(Date.now());
   const d = visit.dealer;
@@ -232,9 +257,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
   const locationApproved = d?.locationVerificationStatus === 'approved';
   const dealerActive = d?.status === 'active';
   const mapCoordinates = approvedDealerCoordinates(d);
-  const geofenceRadius = Number(d?.geofenceRadius) > 0
-    ? Number(d.geofenceRadius)
-    : DEFAULT_GEOFENCE_RADIUS_METERS;
+  const geofenceRadius = dealerGeofenceRadius(d);
   const hasActiveCheckIn = visit.visit?.status === 'checked-in';
   const activeRecordMatchesStop = activeVisitRecord && (
     refId(activeVisitRecord.dailyVisit) === refId(visit._id)
@@ -243,9 +266,8 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
   const hasOtherActiveVisit = activeVisitStatus === 'active' && !hasActiveCheckIn && !activeRecordMatchesStop;
 
   useEffect(() => {
-    if (status !== 'in_progress' || hasActiveCheckIn || visit.requiresReview
-      || !locationApproved || !dealerActive || activeVisitStatus !== 'clear'
-      || !mapCoordinates) {
+    if (status !== 'in_progress' || !mapCoordinates || !dealerActive
+      || (!hasActiveCheckIn && activeVisitStatus !== 'clear')) {
       setProximity({ status: 'idle', distanceMeters: null, accuracyMeters: null });
       return undefined;
     }
@@ -255,6 +277,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
     }
 
     setProximity({ status: 'locating', distanceMeters: null, accuracyMeters: null });
+    latestGpsFixRef.current = null;
     const watchId = navigator.geolocation.watchPosition(
       position => {
         const { latitude, longitude, accuracy } = position.coords;
@@ -266,6 +289,12 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
           setProximity({ status: 'error', message: 'The device returned an invalid GPS fix. Retry GPS detection.' });
           return;
         }
+        latestGpsFixRef.current = {
+          latitude,
+          longitude,
+          accuracyMeters: accuracy,
+          timestamp: Number.isFinite(position.timestamp) ? position.timestamp : Date.now(),
+        };
         const distanceMeters = distanceInMeters(
           latitude,
           longitude,
@@ -286,14 +315,13 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
             : 'Your current location is unavailable. Check device location services.';
         setProximity({ status: 'error', message });
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [
     status,
     hasActiveCheckIn,
-    visit.requiresReview,
     locationApproved,
     dealerActive,
     activeVisitStatus,
@@ -383,23 +411,57 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
         await reportGpsFailure('unsupported');
         return;
       }
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 0,
+      const now = Date.now();
+      const recentFix = latestGpsFixRef.current;
+      let position = recentFix
+        && now - recentFix.timestamp >= 0
+        && now - recentFix.timestamp <= 10000
+        && recentFix.accuracyMeters <= MAX_GPS_ACCURACY_METERS
+        ? {
+            coords: {
+              latitude: recentFix.latitude,
+              longitude: recentFix.longitude,
+              accuracy: recentFix.accuracyMeters,
+            },
+            timestamp: recentFix.timestamp,
+          }
+        : null;
+      if (!position) {
+        position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 60000,
+            maximumAge: 5000,
+          });
+        }).catch(async error => {
+          const fallbackFix = latestGpsFixRef.current;
+          const fallbackAge = fallbackFix ? Date.now() - fallbackFix.timestamp : Infinity;
+          if (
+            [2, 3].includes(error.code)
+            && fallbackAge >= 0
+            && fallbackAge <= 30000
+            && fallbackFix.accuracyMeters <= MAX_GPS_ACCURACY_METERS
+          ) {
+            return {
+              coords: {
+                latitude: fallbackFix.latitude,
+                longitude: fallbackFix.longitude,
+                accuracy: fallbackFix.accuracyMeters,
+              },
+              timestamp: fallbackFix.timestamp,
+            };
+          }
+          const failureReason = error.code === 1
+            ? 'permission_denied'
+            : error.code === 2
+              ? 'position_unavailable'
+              : error.code === 3
+                ? 'timeout'
+                : 'unsupported';
+          await reportGpsFailure(failureReason);
+          return null;
         });
-      }).catch(async error => {
-        const failureReason = error.code === 1
-          ? 'permission_denied'
-          : error.code === 2
-            ? 'position_unavailable'
-            : error.code === 3
-              ? 'timeout'
-              : 'unsupported';
-        await reportGpsFailure(failureReason);
-        return null;
-      });
+      }
       if (!position) return;
       const response = await visitService.create({
         dealer: d?._id,
@@ -452,6 +514,10 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
                 : 'unsupported';
           payload = { failureReason };
         }
+      }
+      if (!payload.failureReason) {
+        const failure = gpsFixError(d, payload.lat, payload.lng, payload.accuracyMeters);
+        if (failure) throw new Error(failure);
       }
       const response = await visitService.checkOut(visit.visit._id, payload);
       toast.success(response.data.message || 'GPS check-out saved.');
@@ -533,10 +599,9 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
             Checked in {activeVisitRecord.checkInTime ? new Date(activeVisitRecord.checkInTime).toLocaleString() : 'at an unknown time'}.
             {' '}Check it out before starting another dealer.
           </p>
-          {activeVisitRecord.checkOutReviewStatus === 'pending' ? (
+          {!approvedDealerCoordinates(activeVisitRecord.dealer) ? (
             <p className="mt-2 text-sm font-medium text-amber-900 dark:text-amber-200">
-              Checkout is awaiting authorized Admin/ASM review. You cannot start another visit.
-              {activeVisitRecord.checkOutReviewReason && <span className="block text-xs mt-1">{activeVisitRecord.checkOutReviewReason}</span>}
+              Check-out is unavailable until an Admin approves the dealer's current GPS location.
             </p>
           ) : (
             <button
@@ -563,13 +628,9 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
               <p className="text-sm text-red-700 dark:text-red-300">Unable to verify whether you have an active visit. Reload before continuing.</p>
             ) : !dealerActive ? (
               <p className="text-sm text-amber-700 dark:text-amber-300">This dealer is inactive and cannot be checked in.</p>
-            ) : !locationApproved ? (
+            ) : !mapCoordinates ? (
               <p className="text-sm text-amber-700 dark:text-amber-300">
                 Check-in is unavailable until an Admin approves this dealer's GPS location.
-              </p>
-            ) : visit.requiresReview ? (
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                GPS check-in evidence is awaiting an authorized review. Do not retry or skip this stop; the next dealer remains locked.
               </p>
             ) : (
               <>
@@ -597,22 +658,38 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
                     Check-in GPS verified · Accuracy {Math.round(visit.visit.checkInAccuracyMeters)} m · Distance {Math.round(visit.visit.locationDistanceMeters)} m
                   </p>
                 </div>
-                {visit.visit.checkOutReviewStatus === 'pending' || visit.requiresReview ? (
+                {!mapCoordinates ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300">
-                    Check-out evidence requires authorized Admin/ASM review. This visit remains active and the next dealer is locked.
-                    {visit.visit.checkOutReviewReason && <span className="block text-xs mt-1">{visit.visit.checkOutReviewReason}</span>}
+                    Check-out is unavailable until an Admin approves the dealer's current GPS location.
                   </p>
                 ) : (
-                  <button type="button" disabled={saving} onClick={checkOut} className="btn-primary w-full justify-center">
-                    <FiCheck /> {saving ? 'Capturing GPS and Checking Out...' : 'Check Out'}
-                  </button>
+                  <>
+                    {proximity.status === 'locating' || proximity.status === 'idle' ? (
+                      <p className="text-sm text-slate-600 dark:text-slate-300">Checking current GPS distance before check-out…</p>
+                    ) : proximity.status === 'error' ? (
+                      <p role="status" className="text-sm text-red-700 dark:text-red-300">{proximity.message}</p>
+                    ) : proximity.status === 'inaccurate' ? (
+                      <p role="status" className="text-sm text-amber-700 dark:text-amber-300">GPS accuracy must be 50 m or better before check-out.</p>
+                    ) : proximity.distanceMeters > geofenceRadius ? (
+                      <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+                        You are about {Math.round(proximity.distanceMeters)} m from this shop. Check-out requires being within {geofenceRadius} m.
+                      </p>
+                    ) : (
+                      <p role="status" className="text-sm text-green-700 dark:text-green-300">
+                        You are about {Math.round(proximity.distanceMeters)} m from the shop. Check-out is available within {geofenceRadius} m.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={saving || proximity.status !== 'measured' || proximity.distanceMeters > geofenceRadius}
+                      onClick={checkOut}
+                      className="btn-primary w-full justify-center"
+                    >
+                      <FiCheck /> {saving ? 'Capturing GPS and Checking Out...' : 'Check Out'}
+                    </button>
+                  </>
                 )}
               </div>
-            ) : visit.requiresReview ? (
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                A GPS check-in attempt requires Admin/ASM review. Do not retry or skip this stop; the next dealer remains locked.
-                {visit.verificationReason && <span className="block text-xs mt-1">{visit.verificationReason}</span>}
-              </p>
             ) : (
               <>
                 {hasOtherActiveVisit ? (
@@ -625,7 +702,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
                   <p className="text-sm text-slate-500">Checking your active visit status...</p>
                 ) : !dealerActive ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300">This dealer is inactive and cannot be checked in.</p>
-                ) : !locationApproved ? (
+                ) : !mapCoordinates ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300">
                     Check-in is unavailable until an Admin approves this dealer's GPS location.
                   </p>
@@ -695,7 +772,7 @@ function VisitDetail({ visit, onBack, onDone, onStart, isCurrent, activeVisitSta
 /* ── Main Page ───────────────────────────────────────── */
 export default function DailyVisits() {
   const { user } = useAuth();
-  const canManage = ['admin', 'asm'].includes(user?.role);
+  const canManage = ['admin', 'rsm', 'asm', 'se'].includes(user?.role);
   const isEmployee = FIELD_ROLES.includes(user?.role);
 
   const [visits, setVisits]       = useState([]);
@@ -716,11 +793,68 @@ export default function DailyVisits() {
   const [activeVisit, setActiveVisit] = useState(null);
   const [activeVisitRecord, setActiveVisitRecord] = useState(null);
   const [activeVisitStatus, setActiveVisitStatus] = useState(isEmployee ? 'loading' : 'clear');
+  const [activeVisitProximity, setActiveVisitProximity] = useState({ status: 'idle', distanceMeters: null, accuracyMeters: null });
   const [reviewOutcomes, setReviewOutcomes] = useState({});
   const [reviewReasons, setReviewReasons] = useState({});
   const [reviewNotes, setReviewNotes] = useState({});
   const [resolvingReview, setResolvingReview] = useState(null);
   const canResolveReviews = ['admin', 'asm'].includes(user?.role);
+  const hasLoadedActiveAssignment = visits.some(item => (
+    refId(item.visit) === refId(activeVisitRecord)
+    && refId(item._id) === refId(activeVisitRecord?.dailyVisit)
+  ));
+
+  useEffect(() => {
+    if (!activeVisitRecord || hasLoadedActiveAssignment) {
+      setActiveVisitProximity({ status: 'idle', distanceMeters: null, accuracyMeters: null });
+      return undefined;
+    }
+    const coordinates = approvedDealerCoordinates(activeVisitRecord.dealer);
+    if (!coordinates) {
+      setActiveVisitProximity({ status: 'error', message: 'Check-out is unavailable until an Admin approves the dealer location.' });
+      return undefined;
+    }
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setActiveVisitProximity({ status: 'error', message: 'Location access requires a supported browser and a secure connection.' });
+      return undefined;
+    }
+    setActiveVisitProximity({ status: 'locating', distanceMeters: null, accuracyMeters: null });
+    const watchId = navigator.geolocation.watchPosition(
+      position => {
+        const { latitude, longitude, accuracy } = position.coords;
+        if (
+          !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+          || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+          || !Number.isFinite(accuracy) || accuracy < 0
+        ) {
+          setActiveVisitProximity({ status: 'error', message: 'The device returned an invalid GPS fix.' });
+          return;
+        }
+        setActiveVisitProximity({
+          status: accuracy <= MAX_GPS_ACCURACY_METERS ? 'measured' : 'inaccurate',
+          distanceMeters: distanceInMeters(latitude, longitude, coordinates.latitude, coordinates.longitude),
+          accuracyMeters: accuracy,
+        });
+      },
+      error => setActiveVisitProximity({
+        status: 'error',
+        message: error.code === 1
+          ? 'Location permission was denied. Allow GPS access to check out.'
+          : error.code === 3
+            ? 'GPS is taking too long. Retry location detection.'
+            : 'Your current location is unavailable. Check device location services.',
+      }),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [
+    refId(activeVisitRecord),
+    refId(activeVisitRecord?.dealer),
+    activeVisitRecord?.dealer?.latitude,
+    activeVisitRecord?.dealer?.longitude,
+    activeVisitRecord?.dealer?.locationVerificationStatus,
+    hasLoadedActiveAssignment,
+  ]);
 
   const load = async () => {
     setLoading(true);
@@ -787,6 +921,10 @@ export default function DailyVisits() {
 
   const checkOutUnlinkedActiveVisit = async (activeRecord = activeVisitRecord) => {
     if (!activeRecord?._id) return;
+    if (!approvedDealerCoordinates(activeRecord.dealer)) {
+      toast.error('Check-out is unavailable until an Admin approves the dealer location.');
+      return;
+    }
     setResolvingReview(activeRecord._id);
     try {
       let payload;
@@ -813,6 +951,15 @@ export default function DailyVisits() {
                 : gpsError.code === 3 ? 'timeout' : 'unsupported',
           };
         }
+      }
+      if (!payload.failureReason) {
+        const failure = gpsFixError(
+          activeRecord.dealer,
+          payload.lat,
+          payload.lng,
+          payload.accuracyMeters,
+        );
+        if (failure) throw new Error(failure);
       }
       const response = await visitService.checkOut(activeRecord._id, payload);
       toast.success(response.data.message || 'Active visit checked out.');
@@ -882,12 +1029,15 @@ export default function DailyVisits() {
   for (const visit of orderedVisits) {
     const staffId = refId(visit.staff);
     const status = statusOf(visit);
-    if (!currentPlanByStaff.has(staffId) && (['in_progress', 'pending'].includes(status) || visit.requiresReview)) {
+    if (!currentPlanByStaff.has(staffId) && ['in_progress', 'pending'].includes(status)) {
       currentPlanByStaff.set(staffId, visit._id);
     }
   }
   const completedCount = visits.filter(visit => isCompleteStatus(statusOf(visit), visit)).length;
   const progressText = `${completedCount} of ${visits.length} dealers completed`;
+  const assignableStaffList = user?.role === 'admin'
+    ? staffList
+    : staffList.filter(employee => refId(employee) !== String(user?._id));
 
   if (activeVisit) {
     const status = statusOf(activeVisit);
@@ -900,7 +1050,7 @@ export default function DailyVisits() {
         onBack={() => setActiveVisit(null)}
         onDone={() => { setActiveVisit(null); load(); }}
         onStart={handleStart}
-        isCurrent={isEmployee && isCurrent}
+        isCurrent={isEmployee && refId(activeVisit.staff) === String(user?._id) && isCurrent}
         activeVisitStatus={activeVisitStatus}
         activeVisitRecord={activeVisitRecord}
         activeCheckoutLoading={resolvingReview === activeVisitRecord?._id}
@@ -1048,26 +1198,39 @@ export default function DailyVisits() {
             <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
               Checked in {activeVisitRecord.checkInTime ? new Date(activeVisitRecord.checkInTime).toLocaleString() : 'at an unknown time'}.
               {activeVisitRecord.dailyVisit?.date && ` Planned for ${activeVisitRecord.dailyVisit.date}.`}
-              {' '}Check out or resolve its review before starting another dealer.
+              {' '}Check out before starting another dealer.
             </p>
-            {activeVisitRecord.checkOutReviewStatus === 'pending' ? (
-              <p className="mt-2 text-sm font-medium text-amber-900 dark:text-amber-200">
-                Check-out evidence is waiting for an authorized Admin/ASM review. The visit cannot be checked out again.
-                {activeVisitRecord.checkOutReviewReason && <span className="block text-xs mt-1">{activeVisitRecord.checkOutReviewReason}</span>}
-              </p>
-            ) : activeAssignment ? (
+            {activeAssignment ? (
               <button type="button" className="btn-secondary mt-3" onClick={() => setActiveVisit(activeAssignment)}>
                 Continue Active Visit
               </button>
             ) : (
-              <button
-                type="button"
-                className="btn-primary mt-3"
-                disabled={resolvingReview === activeVisitRecord._id}
-                onClick={checkOutUnlinkedActiveVisit}
-              >
-                {resolvingReview === activeVisitRecord._id ? 'Capturing GPS and checking out...' : 'Check Out Active Visit'}
-              </button>
+              <>
+                {activeVisitProximity.status === 'error' && (
+                  <p role="status" className="mt-2 text-sm text-red-700 dark:text-red-300">{activeVisitProximity.message}</p>
+                )}
+                {activeVisitProximity.status === 'locating' && (
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Checking current GPS distance…</p>
+                )}
+                {activeVisitProximity.status === 'inaccurate' && (
+                  <p role="status" className="mt-2 text-sm text-amber-700 dark:text-amber-300">GPS accuracy must be 50 m or better before check-out.</p>
+                )}
+                {activeVisitProximity.status === 'measured' && (
+                  <p role="status" className={`mt-2 text-sm ${activeVisitProximity.distanceMeters <= DEFAULT_GEOFENCE_RADIUS_METERS ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                    You are about {Math.round(activeVisitProximity.distanceMeters)} m from the approved dealer location. Check-out requires being within 75 m.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary mt-3"
+                  disabled={resolvingReview === activeVisitRecord._id
+                    || activeVisitProximity.status !== 'measured'
+                    || activeVisitProximity.distanceMeters > DEFAULT_GEOFENCE_RADIUS_METERS}
+                  onClick={checkOutUnlinkedActiveVisit}
+                >
+                  {resolvingReview === activeVisitRecord._id ? 'Capturing GPS and checking out...' : 'Check Out Active Visit'}
+                </button>
+              </>
             )}
           </div>
         );
@@ -1267,7 +1430,7 @@ export default function DailyVisits() {
         open={modal}
         onClose={() => setModal(false)}
         onSaved={() => { setModal(false); load(); }}
-        staffList={staffList}
+        staffList={assignableStaffList}
         dealerList={dealerList}
       />
     </div>

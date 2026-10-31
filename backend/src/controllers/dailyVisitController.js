@@ -6,6 +6,7 @@ const Visit = require('../models/Visit');
 const activeVisitFilter = require('../utils/activeVisitFilter');
 const { isDailyVisitFinalized } = require('../utils/dailyVisitWorkflow');
 const { getDealerGeofenceRadius } = require('../utils/visitGps');
+const recoverStaleActiveVisits = require('../utils/staleActiveVisit');
 const Notification = require('../models/Notification');
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -14,6 +15,12 @@ const VISIT_PLAN_DEADLINE_HOUR = Number.isInteger(configuredDeadlineHour) && con
   ? configuredDeadlineHour
   : 23;
 const MAX_ACTIVE_VISIT_HOURS = Math.max(1, Number(process.env.VISIT_MAX_ACTIVE_HOURS) || 12);
+const MANAGED_EMPLOYEE_ROLES = {
+  rsm: ['asm', 'se', 'so'],
+  asm: ['se', 'so'],
+  se: ['so'],
+};
+
 function normalizeStatus(visit) {
   if (visit.status) return visit.status;
   if (visit.visitStatus === 'visited') return 'completed';
@@ -65,7 +72,6 @@ async function expirePastAssignments(date) {
   const filter = {
     date: pastDateFilter,
     visit: null,
-    requiresReview: { $ne: true },
     $or: [
       { status: { $in: ['pending', 'in_progress'] } },
       { status: { $exists: false }, visitStatus: 'assigned' },
@@ -77,9 +83,9 @@ async function expirePastAssignments(date) {
       ? { status: assignment.status }
       : { status: { $exists: false }, visitStatus: 'assigned' };
     return DailyVisit.findOneAndUpdate(
-      { _id: assignment._id, visit: null, requiresReview: { $ne: true }, ...currentStatusFilter },
+      { _id: assignment._id, visit: null, ...currentStatusFilter },
       {
-      $set: { status: 'missed', workflowStatus: 'missed', verificationStatus: 'pending', visitStatus: 'skipped' },
+      $set: { status: 'missed', workflowStatus: 'missed', verificationStatus: 'pending', visitStatus: 'skipped', requiresReview: false },
       $push: {
         statusHistory: {
           from: assignment.status || 'pending',
@@ -115,25 +121,47 @@ async function getManagedStaffIds(user) {
     const employees = await User.find({ role: { $in: ['so', 'se', 'asm', 'rsm', 'nsm'] } }).select('_id');
     return employees.map(employee => employee._id);
   }
-  if (user.role !== 'asm') return [user._id];
-
-  const employees = await User.find({
-    role: { $in: ['so', 'se'] },
-    $or: [{ asm: user._id }, { reportsTo: user._id }],
-  }).select('_id');
+  const roles = MANAGED_EMPLOYEE_ROLES[user.role];
+  if (!roles) return [user._id];
+  const hierarchyField = user.role === 'rsm' ? 'rsm' : user.role === 'asm' ? 'asm' : null;
+  const scope = hierarchyField
+    ? { $or: [{ [hierarchyField]: user._id }, { reportsTo: user._id }] }
+    : { reportsTo: user._id };
+  const employees = await User.find({ role: { $in: roles }, ...scope }).select('_id');
   return [user._id, ...employees.map(employee => employee._id)];
+}
+
+async function isManagedEmployee(user, employee) {
+  if (user.role === 'admin') return true;
+  const roles = MANAGED_EMPLOYEE_ROLES[user.role];
+  if (!roles?.includes(employee.role) || String(employee._id) === String(user._id)) return false;
+  const hierarchyField = user.role === 'rsm' ? 'rsm' : user.role === 'asm' ? 'asm' : null;
+  const scope = hierarchyField
+    ? { $or: [{ [hierarchyField]: user._id }, { reportsTo: user._id }] }
+    : { reportsTo: user._id };
+  return Boolean(await User.exists({ _id: employee._id, role: employee.role, ...scope }));
+}
+
+function dealerIsInManagerScope(user, dealer) {
+  if (user.role === 'admin') return true;
+  const field = user.role === 'rsm' ? 'rsm' : user.role === 'asm' ? 'asm' : user.role === 'se' ? 'se' : null;
+  return Boolean(field && String(dealer[field] || '') === String(user._id));
 }
 
 async function managerOwnsPlan(user, plan) {
   if (user.role === 'admin') return true;
-  if (String(plan.staff) === String(user._id) && ['asm', 'rsm', 'nsm'].includes(user.role)) return true;
-  if (user.role !== 'asm') return false;
-  const employee = await User.findOne({
+  if (String(plan.staff) === String(user._id) && ['asm', 'rsm', 'nsm', 'se'].includes(user.role)) return true;
+  const roles = MANAGED_EMPLOYEE_ROLES[user.role];
+  if (!roles) return false;
+  const hierarchyField = user.role === 'rsm' ? 'rsm' : user.role === 'asm' ? 'asm' : null;
+  const scope = hierarchyField
+    ? { $or: [{ [hierarchyField]: user._id }, { reportsTo: user._id }] }
+    : { reportsTo: user._id };
+  return Boolean(await User.exists({
     _id: plan.staff,
-    role: { $in: ['so', 'se'] },
-    $or: [{ asm: user._id }, { reportsTo: user._id }],
-  }).select('_id');
-  return Boolean(employee);
+    role: { $in: roles },
+    ...scope,
+  }));
 }
 
 exports.assign = async (req, res) => {
@@ -163,19 +191,17 @@ exports.assign = async (req, res) => {
       status: 'active',
     });
     if (!employee) return res.status(404).json({ success: false, message: 'Active field employee not found.' });
-    if (req.user.role === 'asm'
-      && String(employee._id) !== String(req.user._id)
-      && (!['so', 'se'].includes(employee.role)
-        || (String(employee.asm || '') !== String(req.user._id)
-          && String(employee.reportsTo || '') !== String(req.user._id)))) {
-      return res.status(403).json({ success: false, message: 'You can only plan visits for employees in your ASM hierarchy.' });
+    if (!await isManagedEmployee(req.user, employee)) {
+      return res.status(403).json({ success: false, message: 'You can only plan visits for eligible employees in your reporting hierarchy.' });
     }
 
-    const selectedDealers = await Dealer.find({ _id: { $in: dealerIds } }).select('dealerName so se asm rsm nsm');
+    const selectedDealers = await Dealer.find({ _id: { $in: dealerIds } })
+      .select('dealerName so se asm rsm nsm');
     if (selectedDealers.length !== dealerIds.length) {
       return res.status(404).json({ success: false, message: 'One or more selected dealers were not found.' });
     }
     const notAssignedToEmployee = selectedDealers.filter(dealer => {
+      if (!dealerIsInManagerScope(req.user, dealer)) return true;
       if (employee.role === 'so') return !(dealer.so || []).some(id => String(id) === String(employee._id));
       if (employee.role === 'se') return String(dealer.se || '') !== String(employee._id);
       return String(dealer[employee.role] || '') !== String(employee._id);
@@ -419,6 +445,7 @@ exports.getReport = async (req, res) => {
 exports.getMine = async (req, res) => {
   try {
     const date = req.query.date || today();
+    await recoverStaleActiveVisits(req.user);
     await expirePastAssignments(today());
     const visits = await DailyVisit.find({ staff: req.user._id, date })
       .populate('dealer', 'dealerName area province phone address locationVerificationStatus status latitude longitude geofenceRadius')
@@ -433,6 +460,7 @@ exports.getMine = async (req, res) => {
 
 exports.start = async (req, res) => {
   try {
+    await recoverStaleActiveVisits(req.user);
     await expirePastAssignments(today());
     let assignment = await DailyVisit.findById(req.params.id);
     if (!assignment) return res.status(404).json({ success: false, message: 'Daily visit assignment not found.' });

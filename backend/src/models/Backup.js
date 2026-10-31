@@ -7,8 +7,8 @@ const backupSchema = new mongoose.Schema({
   type: { type: String, enum: ['automatic', 'manual'], required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   error: { type: String, default: null },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 backupSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('Backup', backupSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Backup', backupSchema));

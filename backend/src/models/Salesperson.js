@@ -21,8 +21,8 @@ const salespersonSchema = new mongoose.Schema({
   status:      { type: String, enum: ['active', 'inactive'], default: 'active' },
   reportsTo:   { type: mongoose.Schema.Types.ObjectId, ref: 'Salesperson', default: null },
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 module.exports.PROVINCES = PROVINCES;
 
-module.exports = mongoose.model('Salesperson', salespersonSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Salesperson', salespersonSchema));

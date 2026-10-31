@@ -12,8 +12,8 @@ const targetSchema = new mongoose.Schema({
   province:    String,
   region:      String,
   setBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 targetSchema.index({ user: 1, month: 1, year: 1 }, { unique: true });
 
-module.exports = mongoose.model('Target', targetSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Target', targetSchema));

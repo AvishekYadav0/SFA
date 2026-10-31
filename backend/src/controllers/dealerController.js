@@ -302,6 +302,9 @@ exports.verifyLocation = async (req, res) => {
     validateGeofenceRadius(dealer.geofenceRadius ?? 75);
 
     const rejectionReason = status === 'rejected' ? String(reason || '').trim() : '';
+    if (status === 'rejected' && (rejectionReason.length < 3 || rejectionReason.length > 500)) {
+      return res.status(400).json({ success: false, message: 'Enter a rejection reason between 3 and 500 characters.' });
+    }
     const update = {
       locationVerificationStatus: status,
       locationReviewedBy: req.user._id,

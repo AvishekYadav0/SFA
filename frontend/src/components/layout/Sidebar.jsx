@@ -4,7 +4,7 @@ import {
   FiGrid, FiUsers, FiShoppingBag, FiPackage, FiClipboard,
   FiDollarSign, FiBarChart2, FiUser, FiSettings, FiLogOut,
   FiX, FiTrendingUp, FiMapPin, FiBell, FiTarget,
-  FiTruck, FiGitMerge, FiShoppingCart, FiHome, FiCalendar, FiLayers, FiDatabase
+  FiTruck, FiGitMerge, FiShoppingCart, FiHome, FiCalendar, FiLayers, FiDatabase, FiBriefcase
 } from 'react-icons/fi';
 
 const NAV = [
@@ -27,28 +27,31 @@ const NAV = [
   { to: '/lifting',      icon: FiTruck,       label: 'Lifting Plan',    roles: ['so','se','asm','rsm','nsm','admin'] },
   { to: '/notifications',icon: FiBell,        label: 'Notifications',   roles: ['nsm','rsm','asm','se','so','admin'] },
   { to: '/profile',      icon: FiUser,        label: 'Profile',         roles: ['nsm','rsm','asm','se','so','dealer','admin'] },
-  { to: '/settings',     icon: FiSettings,    label: 'Settings',        roles: ['nsm','admin'] },
+  { to: '/settings',     icon: FiSettings,    label: 'Settings',        roles: ['nsm','admin','superadmin'] },
+  { to: '/companies',    icon: FiBriefcase,   label: 'Companies',       roles: ['superadmin'] },
   { to: '/admin/backups',icon: FiDatabase,    label: 'Database Backup', roles: ['admin'] },
 ];
 
 const ROLE_COLORS = {
-  nsm:    'bg-purple-600',
-  rsm:    'bg-blue-600',
-  asm:    'bg-green-600',
-  se:     'bg-orange-500',
-  so:     'bg-yellow-500',
-  dealer: 'bg-teal-600',
-  admin:  'bg-red-600',
+  nsm:        'bg-purple-600',
+  rsm:        'bg-blue-600',
+  asm:        'bg-green-600',
+  se:         'bg-orange-500',
+  so:         'bg-yellow-500',
+  dealer:     'bg-teal-600',
+  admin:      'bg-red-600',
+  superadmin: 'bg-slate-800',
 };
 
 const ROLE_LABELS = {
-  nsm:    'National Sales Manager',
-  rsm:    'Regional Sales Manager',
-  asm:    'Area Sales Manager',
-  se:     'Sales Executive',
-  so:     'Sales Officer',
-  dealer: 'Dealer',
-  admin:  'Administrator',
+  nsm:        'National Sales Manager',
+  rsm:        'Regional Sales Manager',
+  asm:        'Area Sales Manager',
+  se:         'Sales Executive',
+  so:         'Sales Officer',
+  dealer:     'Dealer',
+  admin:      'Administrator',
+  superadmin: 'Super Admin',
 };
 
 export const Sidebar = ({ open, onClose }) => {

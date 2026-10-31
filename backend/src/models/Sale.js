@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 const saleSchema = new mongoose.Schema({
   order:       { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: false },
-  orderNumber: { type: String, unique: true, sparse: true },
-  invoiceNumber:{ type: String, unique: true, sparse: true },
-  manualSaleId: { type: String, unique: true, sparse: true },
+  orderNumber: { type: String },
+  invoiceNumber:{ type: String },
+  manualSaleId: { type: String },
     salesperson: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   dealer:      { type: mongoose.Schema.Types.ObjectId, ref: 'Dealer' },
   province:    String,
@@ -41,14 +41,29 @@ const saleSchema = new mongoose.Schema({
   staffId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   remarks:    String,
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
-saleSchema.index({ order: 1 }, {
-  unique: true,
-  partialFilterExpression: { order: { $type: 'objectId' } },
-  name: 'sale_order_unique_partial',
-});
+saleSchema.index(
+  { companyId: 1, orderNumber: 1 },
+  { unique: true, partialFilterExpression: { orderNumber: { $type: 'string' } }, name: 'company_sale_order_number_unique' }
+);
+saleSchema.index(
+  { companyId: 1, invoiceNumber: 1 },
+  { unique: true, partialFilterExpression: { invoiceNumber: { $type: 'string' } }, name: 'company_sale_invoice_number_unique' }
+);
+saleSchema.index(
+  { companyId: 1, manualSaleId: 1 },
+  { unique: true, partialFilterExpression: { manualSaleId: { $type: 'string' } }, name: 'company_sale_manual_id_unique' }
+);
+saleSchema.index(
+  { companyId: 1, order: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { order: { $type: 'objectId' } },
+    name: 'company_sale_order_unique_partial',
+  }
+);
 saleSchema.index({ status: 1 });
 saleSchema.index({ province: 1 });
 
-module.exports = mongoose.model('Sale', saleSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Sale', saleSchema));

@@ -77,10 +77,10 @@ const dealerSchema = new mongoose.Schema({
 
   createdBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   linkedUser:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 dealerSchema.virtual('availableCredit').get(function () {
   return this.creditLimit - this.outstandingAmount;
 });
 
-module.exports = mongoose.model('Dealer', dealerSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Dealer', dealerSchema));

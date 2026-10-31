@@ -10,6 +10,8 @@ import { Spinner } from './components/common/Spinner';
 const Login         = lazy(() => import('./pages/Login'));
 const AdminRegister = lazy(() => import('./pages/AdminRegister'));
 const Landing       = lazy(() => import('./pages/Landing'));
+const CompanyRegister = lazy(() => import('./pages/CompanyRegister'));
+const CompanyVerification = lazy(() => import('./pages/CompanyVerification'));
 const Dashboard     = lazy(() => import('./pages/Dashboard'));
 const Users         = lazy(() => import('./pages/Users'));
 const Dealers       = lazy(() => import('./pages/Dealers'));
@@ -67,6 +69,8 @@ const AppRoutes = () => {
         <Route path="/"              element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
         <Route path="/login"         element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
         <Route path="/admin-register" element={user ? <Navigate to="/dashboard" replace /> : <AdminRegister />} />
+        <Route path="/company-register" element={user ? <Navigate to="/dashboard" replace /> : <CompanyRegister />} />
+        <Route path="/company-verification" element={user ? <Navigate to="/dashboard" replace /> : <CompanyVerification />} />
 
         {/* Protected */}
         <Route element={<PrivateRoute><AppLayout /></PrivateRoute>}>

@@ -20,7 +20,7 @@ const dealer = {
 };
 
 function coordinateNorthOfDealer(meters) {
-  return dealer.latitude + meters / 111195;
+  return dealer.latitude + meters / 6371000 * 180 / Math.PI;
 }
 
 test('check-in/out GPS validation accepts 50 m and rejects 100 m against the 75 m fence', () => {
@@ -33,20 +33,15 @@ test('check-in/out GPS validation accepts 50 m and rejects 100 m against the 75 
   assert.ok(Math.abs(at100Meters.distanceMeters - 100) < 1);
 });
 
-test('configured global geofence allows GPS check-in within 3999 m regardless of the shop radius', () => {
+test('exactly 75 metres passes and any greater distance fails regardless of saved radius', () => {
   const previousRadius = process.env.VISIT_GEOFENCE_RADIUS_METERS;
-  process.env.VISIT_GEOFENCE_RADIUS_METERS = '3999';
-
-  try {
-    assert.equal(getDealerGeofenceRadius(dealer), 3999);
-    const withinGlobalRadius = validateGpsFix(dealer, coordinateNorthOfDealer(3999), dealer.longitude, 10);
-    const outsideGlobalRadius = validateGpsFix(dealer, coordinateNorthOfDealer(4000), dealer.longitude, 10);
-    assert.equal(withinGlobalRadius.result, 'accepted');
-    assert.equal(outsideGlobalRadius.result, 'outside_geofence');
-  } finally {
-    if (previousRadius === undefined) delete process.env.VISIT_GEOFENCE_RADIUS_METERS;
-    else process.env.VISIT_GEOFENCE_RADIUS_METERS = previousRadius;
-  }
+  process.env.VISIT_GEOFENCE_RADIUS_METERS = '4000';
+  assert.equal(getDealerGeofenceRadius({ ...dealer, geofenceRadius: 10 }), 75);
+  assert.equal(validateGpsFix(dealer, coordinateNorthOfDealer(75), dealer.longitude, 10).result, 'accepted');
+  assert.equal(validateGpsFix(dealer, coordinateNorthOfDealer(76), dealer.longitude, 10).result, 'outside_geofence');
+  assert.equal(validateGpsFix({ ...dealer, geofenceRadius: 4000 }, coordinateNorthOfDealer(100), dealer.longitude, 10).result, 'outside_geofence');
+  if (previousRadius === undefined) delete process.env.VISIT_GEOFENCE_RADIUS_METERS;
+  else process.env.VISIT_GEOFENCE_RADIUS_METERS = previousRadius;
 });
 
 test('GPS validation rejects unapproved dealer locations and poor accuracy', () => {
@@ -54,8 +49,13 @@ test('GPS validation rejects unapproved dealer locations and poor accuracy', () 
     validateGpsFix({ ...dealer, locationVerificationStatus: 'pending_approval' }, 27, 85, 5).result,
     'dealer_location_unapproved',
   );
+  assert.equal(
+    validateGpsFix({ ...dealer, locationVerificationStatus: 'rejected' }, 27, 85, 5).result,
+    'dealer_location_unapproved',
+  );
   assert.equal(validateGpsFix(dealer, 27, 85, 50.1).result, 'inaccurate');
   assert.equal(validateGpsFix(dealer, 91, 85, 5).result, 'invalid_coordinates');
+  assert.equal(validateGpsFix(dealer, null, 85, 5).result, 'invalid_coordinates');
 });
 
 test('the database indexes prevent duplicate daily assignments and simultaneous active visits', () => {
@@ -96,6 +96,12 @@ test('legacy checkout ownership requires a missing check-in owner and matching e
 test('only finalized prior stops unlock the next daily visit', () => {
   assert.equal(isDailyVisitFinalized({ status: 'verified' }), true);
   assert.equal(isDailyVisitFinalized({ status: 'suspicious', requiresReview: true }), false);
+  assert.equal(isDailyVisitFinalized({
+    status: 'suspicious',
+    requiresReview: true,
+    visitStatus: 'visited',
+    visit: { status: 'checked-out' },
+  }), true);
   assert.equal(isDailyVisitFinalized({ status: 'in_progress' }), false);
   assert.equal(isDailyVisitFinalized({ status: 'missed', requiresReview: false }), true);
 });

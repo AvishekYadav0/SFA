@@ -8,8 +8,8 @@ const backupLogSchema = new mongoose.Schema({
   status: { type: String, enum: ['SUCCESS', 'FAILED'], required: true },
   ipAddress: { type: String, default: null },
   error: { type: String, default: null },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 backupLogSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('BackupLog', backupLogSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('BackupLog', backupLogSchema));

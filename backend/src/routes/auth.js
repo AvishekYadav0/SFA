@@ -3,6 +3,8 @@ const express = require('express');
 const r = express.Router();
 const c = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
+r.post('/register-company', c.registerCompany);
+r.post('/verify-company', c.verifyCompany);
 r.get('/check-admin', c.checkAdmin);
 r.post('/register-admin', c.registerAdmin);
 r.post('/login', c.login);

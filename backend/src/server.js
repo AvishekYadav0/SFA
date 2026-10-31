@@ -1,4 +1,7 @@
 require('dotenv').config();
+const mongoose = require('mongoose');
+const { tenantPlugin } = require('./utils/tenantContext');
+mongoose.plugin(tenantPlugin);
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
@@ -7,7 +10,7 @@ const { startBackupScheduler } = require('./services/backupService');
 
 const app = express();
 
-app.use(cors({ origin: true, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
+app.use(cors({ origin: true, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization','X-Company-Verification'] }));
 app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

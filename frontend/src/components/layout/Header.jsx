@@ -55,7 +55,10 @@ export const Header = ({ onMenuClick }) => {
         <button onClick={onMenuClick} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl flex-shrink-0">
           <FiMenu className="text-slate-600 dark:text-slate-400" />
         </button>
-        <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white truncate">{title}</h2>
+        <div className="min-w-0">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white truncate">{title}</h2>
+          {user?.companyName && <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user.companyName}</p>}
+        </div>
       </div>
       <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         {badge && (

@@ -7,8 +7,8 @@ const notificationSchema = new mongoose.Schema({
   type:    { type: String, enum: ['order', 'collection', 'dealer', 'target', 'outstanding', 'leave', 'meeting', 'general'], default: 'general' },
   read:    { type: Boolean, default: false },
   link:    String,
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 notificationSchema.index({ user: 1, read: 1 });
 
-module.exports = mongoose.model('Notification', notificationSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Notification', notificationSchema));

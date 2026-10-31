@@ -4,9 +4,9 @@ const Dealer = require('../models/Dealer');
 const DailyVisit = require('../models/DailyVisit');
 const { scopeFilter, hierarchyFields } = require('../middleware/auth');
 const activeVisitFilter = require('../utils/activeVisitFilter');
+const recoverStaleActiveVisits = require('../utils/staleActiveVisit');
 const { isDailyVisitFinalized } = require('../utils/dailyVisitWorkflow');
 const User = require('../models/User');
-const Notification = require('../models/Notification');
 const {
   distanceInMeters,
   getDealerGeofenceRadius,
@@ -20,7 +20,6 @@ const MIN_VISIT_DURATION_MINUTES = configuredMinimumDurationValue?.trim() !== ''
   ? configuredMinimumDuration
   : 10;
 const CHECKOUT_FAILURE_REASONS = new Set(['permission_denied', 'position_unavailable', 'timeout', 'unsupported']);
-const MAX_LOCATION_CHANGE_METERS = Math.max(1, Number(process.env.VISIT_MAX_LOCATION_CHANGE_METERS) || 75);
 
 function getLocationVerification(dealer, latitude, longitude) {
   const hasApprovedDealerLocation = dealer?.locationVerificationStatus === 'approved'
@@ -53,64 +52,43 @@ function getLocationVerification(dealer, latitude, longitude) {
   };
 }
 
-async function notifyVisitReview(visit, message) {
-  const recipients = await User.find({
-    status: 'active',
-    $or: [
-      { role: 'admin' },
-      ...(visit.asm ? [{ role: 'asm', _id: visit.asm }] : []),
-    ],
-  }).select('_id');
-  if (!recipients.length) return;
-  try {
-    await Notification.insertMany(recipients.map(recipient => ({
-      user: recipient._id,
-      title: 'Dealer visit requires review',
-      message,
-      type: 'general',
-      link: '/daily-visits',
-    })), { ordered: false });
-  } catch (error) {
-    console.error(`Failed to notify reviewers for visit ${visit._id}:`, error.message);
-  }
-}
-
 async function recordCheckInFailure(assignment, actor, reason, result, gps = {}) {
   const attemptedAt = new Date();
+  const isTransientGpsFailure = ['permission_denied', 'position_unavailable', 'timeout', 'unsupported'].includes(result);
   const verificationStatus = result === 'inaccurate' ? 'suspicious' : 'invalid';
+  const update = {
+    $push: {
+      checkInAttempts: {
+        actor: actor._id,
+        attemptedAt,
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+        accuracyMeters: gps.accuracyMeters,
+        distanceMeters: gps.distanceMeters,
+        result,
+        reason,
+      },
+    },
+  };
+  if (!isTransientGpsFailure) {
+    update.$push.verificationHistory = {
+      status: verificationStatus,
+      reason,
+      recordedAt: attemptedAt,
+      recordedBy: actor._id,
+    };
+    update.$set = { verificationStatus, verificationReason: reason, requiresReview: false };
+  }
   const updated = await DailyVisit.findOneAndUpdate(
     { _id: assignment._id, staff: actor._id, status: 'in_progress', visit: null },
-    {
-      $push: {
-        checkInAttempts: {
-          actor: actor._id,
-          attemptedAt,
-          latitude: gps.latitude,
-          longitude: gps.longitude,
-          accuracyMeters: gps.accuracyMeters,
-          distanceMeters: gps.distanceMeters,
-          result,
-          reason,
-        },
-        verificationHistory: {
-          status: verificationStatus,
-          reason,
-          recordedAt: attemptedAt,
-          recordedBy: actor._id,
-        },
-      },
-      $set: { requiresReview: true, verificationStatus, verificationReason: reason },
-    },
+    update,
   );
   if (!updated) {
     throw new Error('The daily visit changed before the GPS failure could be recorded. Reload the plan.');
   }
-  const actorRecord = await User.findById(actor._id).select('asm role');
-  const reviewerAsm = actorRecord?.role === 'asm' ? actor._id : actorRecord?.asm;
-  await notifyVisitReview({ _id: assignment._id, asm: reviewerAsm }, reason);
 }
 
-async function updateDailyVisitAfterCheckout(data, status, requiresReview, actorId) {
+async function updateDailyVisitAfterCheckout(data, status, actorId) {
   if (!data.dailyVisit) return true;
   const finalizedAt = data.checkOutTime || new Date();
   const updated = await DailyVisit.findOneAndUpdate(
@@ -121,7 +99,7 @@ async function updateDailyVisitAfterCheckout(data, status, requiresReview, actor
         workflowStatus: 'completed',
         verificationStatus: status,
         visitStatus: 'visited',
-        requiresReview,
+        requiresReview: false,
         completedAt: finalizedAt,
         statusUpdatedBy: actorId,
       },
@@ -137,7 +115,11 @@ async function updateDailyVisitAfterCheckout(data, status, requiresReview, actor
     },
     { new: true },
   );
-  return Boolean(updated);
+  if (updated) return true;
+  const existing = await DailyVisit.findOne({ _id: data.dailyVisit, visit: data._id })
+    .select('status requiresReview');
+  return Boolean(existing && ['completed', 'verified', 'suspicious', 'invalid'].includes(existing.status)
+    && existing.requiresReview !== true);
 }
 
 async function finalizeResolvedDailyVisit(data) {
@@ -198,7 +180,7 @@ exports.getAll = async (req, res) => {
   try {
     const page   = parseInt(req.query.page)  || 1;
     const limit  = parseInt(req.query.limit) || 20;
-    const filter = { ...scopeFilter(req) };
+    const filter = { ...scopeFilter(req), archivedAt: null };
     if (req.query.dealer) filter.dealer = req.query.dealer;
     if (req.query.se)     filter.se     = req.query.se;
     if (req.query.so)     filter.so     = req.query.so;
@@ -207,7 +189,7 @@ exports.getAll = async (req, res) => {
 
     const total = await Visit.countDocuments(filter);
     const data  = await Visit.find(filter)
-      .populate('dealer', 'dealerName area province')
+      .populate('dealer', 'dealerName area province locationVerificationStatus latitude longitude')
       .populate('se', 'name employeeId')
       .populate('so', 'name employeeId')
       .sort('-createdAt').skip((page - 1) * limit).limit(limit);
@@ -218,8 +200,8 @@ exports.getAll = async (req, res) => {
 
 exports.getOne = async (req, res) => {
   try {
-    const data = await Visit.findOne({ _id: req.params.id, ...scopeFilter(req) })
-      .populate('dealer', 'dealerName area province')
+    const data = await Visit.findOne({ _id: req.params.id, archivedAt: null, ...scopeFilter(req) })
+      .populate('dealer', 'dealerName area province locationVerificationStatus latitude longitude')
       .populate('se so asm', 'name employeeId phone');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data });
@@ -228,7 +210,7 @@ exports.getOne = async (req, res) => {
 
 exports.getStats = async (req, res) => {
   try {
-    const scope = scopeFilter(req);
+    const scope = { ...scopeFilter(req), archivedAt: null };
     const now   = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -243,9 +225,10 @@ exports.getStats = async (req, res) => {
 
 exports.getActive = async (req, res) => {
   try {
+    await recoverStaleActiveVisits(req.user);
     const data = await Visit.findOne(activeVisitFilter(req.user))
       .select('_id dealer dailyVisit checkInTime checkInAccuracyMeters locationDistanceMeters status checkOutReviewStatus checkOutReviewReason')
-      .populate('dealer', 'dealerName province district area')
+      .populate('dealer', 'dealerName province district area latitude longitude geofenceRadius locationVerificationStatus')
       .populate('dailyVisit', 'date sequence dealer');
     res.json({ success: true, data });
   } catch (err) {
@@ -255,6 +238,7 @@ exports.getActive = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
+    await recoverStaleActiveVisits(req.user);
     const User   = require('../models/User');
     const dealer = await Dealer.findById(req.body.dealer);
     if (!dealer) return res.status(404).json({ success: false, message: 'Dealer not found' });
@@ -418,6 +402,7 @@ exports.create = async (req, res) => {
     const data = await Visit.create({
       ...bodyRest,
       ...hierarchy,
+      dealer: dealer._id,
       checkInLat: checkInLatitude,
       checkInLng: checkInLongitude,
       checkInAccuracyMeters,
@@ -502,10 +487,9 @@ exports.recordCheckInGpsFailure = async (req, res) => {
       return res.status(409).json({ success: false, message: 'This employee has no active, unchecked-in daily stop to record a GPS failure against.' });
     }
     await recordCheckInFailure(assignment, req.user, reason, req.body.reason);
-    res.status(422).json({
-      success: false,
-      reviewRequired: true,
-      message: `${reason} The failed GPS attempt was recorded and the next assigned dealer remains locked pending review.`,
+    res.json({
+      success: true,
+      message: `${reason} The failed GPS attempt was recorded. Retry this same stop after correcting the GPS issue.`,
     });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -528,10 +512,6 @@ exports.checkOut = async (req, res) => {
     if (visit.status !== 'checked-in') {
       return res.status(409).json({ success: false, message: 'This visit has already been checked out.' });
     }
-    if (visit.checkOutReviewStatus === 'pending') {
-      return res.status(409).json({ success: false, message: 'This check-out is awaiting an authorized Admin/ASM review.' });
-    }
-
     const attemptedAt = new Date();
     const latitude = typeof req.body?.lat === 'number' ? req.body.lat : null;
     const longitude = typeof req.body?.lng === 'number' ? req.body.lng : null;
@@ -549,7 +529,7 @@ exports.checkOut = async (req, res) => {
       distanceMeters = gpsFix.distanceMeters;
       if (!visit.checkInTime || Number.isNaN(new Date(visit.checkInTime).getTime())) {
         result = 'invalid_coordinates';
-        reason = 'This visit has no valid server check-in time and requires Admin review.';
+        reason = 'This visit has no valid server check-in time.';
       } else if (gpsFix.result !== 'accepted') {
         result = gpsFix.result;
         reason = gpsFix.reason;
@@ -568,73 +548,47 @@ exports.checkOut = async (req, res) => {
     };
 
     if (result !== 'accepted') {
-      const verificationStatus = result === 'inaccurate' ? 'suspicious' : 'invalid';
-      const heldVisit = await Visit.findOneAndUpdate(
+      const failedAttempt = await Visit.findOneAndUpdate(
         {
           _id: visit._id,
           status: 'checked-in',
-          checkOutReviewStatus: { $ne: 'pending' },
           ...checkOutOwnerFilter,
         },
         {
-          $set: {
-            checkOutReviewStatus: 'pending',
-            checkOutReviewReason: reason,
-            verificationStatus,
-            verificationReason: reason,
-          },
-          $push: {
-            checkOutAttempts: attempt,
-            verificationHistory: {
-              status: verificationStatus,
-              reason,
-              recordedAt: attemptedAt,
-              recordedBy: req.user._id,
-            },
-          },
+          $push: { checkOutAttempts: attempt },
         },
         { new: true },
       );
-      if (!heldVisit) {
+      if (!failedAttempt) {
         return res.status(409).json({ success: false, message: 'This visit changed during check-out. Reload to see its current status.' });
       }
-      if (heldVisit.dailyVisit) {
-        await DailyVisit.findOneAndUpdate(
-          { _id: heldVisit.dailyVisit, visit: heldVisit._id, status: 'in_progress' },
-          { $set: { requiresReview: true, verificationStatus } },
-        );
-      }
-      await notifyVisitReview(heldVisit, reason);
-      return res.status(422).json({
+      const statusCode = result === 'outside_geofence' || result === 'dealer_location_unapproved' ? 403 : 422;
+      return res.status(statusCode).json({
         success: false,
-        reviewRequired: true,
-        data: { checkOutReviewStatus: 'pending', checkOutReviewReason: reason, attempt },
-        message: `${reason} Evidence was saved and the next dealer remains locked pending authorized Admin/ASM review.`,
+        data: { attempt },
+        message: `${reason} Check-out was not completed; correct the issue and retry.`,
       });
     }
 
     const checkOutTime = attemptedAt;
-    const checkOutDurationSeconds = Math.max(0, Math.floor((checkOutTime - new Date(visit.checkInTime)) / 1000));
+    const checkInTime = new Date(visit.checkInTime);
+    if (checkOutTime <= checkInTime) {
+      return res.status(409).json({ success: false, message: 'Check-out time must be later than check-in time.' });
+    }
+    const checkOutDurationSeconds = Math.floor((checkOutTime - checkInTime) / 1000);
     const minimumDurationSeconds = MIN_VISIT_DURATION_MINUTES * 60;
-    const locationChangeMeters = isValidCoordinatePair(visit.checkInLat, visit.checkInLng)
-      ? distanceInMeters(visit.checkInLat, visit.checkInLng, latitude, longitude)
-      : null;
-    const anomalies = [];
     if (checkOutDurationSeconds < minimumDurationSeconds) {
-      anomalies.push(`Visit duration was ${Math.floor(checkOutDurationSeconds / 60)} minutes; minimum required is ${MIN_VISIT_DURATION_MINUTES} minutes.`);
+      return res.status(409).json({
+        success: false,
+        message: `Visit duration is ${Math.floor(checkOutDurationSeconds / 60)} minutes; the minimum is ${MIN_VISIT_DURATION_MINUTES} minutes.`,
+      });
     }
-    if (locationChangeMeters !== null && locationChangeMeters > MAX_LOCATION_CHANGE_METERS) {
-      anomalies.push(`Check-in and check-out locations differ by ${Math.round(locationChangeMeters)} metres, exceeding the ${MAX_LOCATION_CHANGE_METERS} metre anomaly threshold.`);
-    }
-    const requiresReview = anomalies.length > 0;
-    const status = requiresReview ? 'suspicious' : 'verified';
-    const reviewReason = anomalies.join(' ');
+    const status = 'verified';
     const data = await Visit.findOneAndUpdate(
       {
         _id: visit._id,
         ...scopeFilter(req),
         status: 'checked-in',
-        checkOutReviewStatus: { $ne: 'pending' },
         ...checkOutOwnerFilter,
       },
       {
@@ -648,16 +602,15 @@ exports.checkOut = async (req, res) => {
           checkOutDistanceMeters: distanceMeters,
           checkOutLocationVerificationStatus: 'within_geofence',
           checkOutDurationSeconds,
-          checkOutReviewStatus: requiresReview ? 'pending' : 'not_required',
-          checkOutReviewReason: reviewReason || undefined,
+          checkOutReviewStatus: 'not_required',
           verificationStatus: status,
-          verificationReason: reviewReason || 'Check-in and check-out GPS, accuracy, geofence, and minimum duration checks passed.',
+          verificationReason: 'Check-in and check-out GPS, accuracy, geofence, and minimum duration checks passed.',
         },
         $push: {
           checkOutAttempts: attempt,
           verificationHistory: {
             status,
-            reason: reviewReason || 'All configured GPS and duration checks passed.',
+            reason: 'Check-out passed server-side GPS accuracy, approved dealer location, geofence, and minimum duration validation.',
             recordedAt: checkOutTime,
             recordedBy: req.user._id,
           },
@@ -666,32 +619,21 @@ exports.checkOut = async (req, res) => {
       { new: true },
     );
     if (!data) {
-      return res.status(409).json({ success: false, message: 'This visit was checked out by another request or now requires review.' });
+      return res.status(409).json({ success: false, message: 'This visit was checked out by another request. Reload to see its current status.' });
     }
 
-    const finalized = await updateDailyVisitAfterCheckout(data, status, requiresReview, req.user._id);
-    if (requiresReview) await notifyVisitReview(data, reviewReason);
+    const finalized = await updateDailyVisitAfterCheckout(data, status, req.user._id);
     if (!finalized) {
       const reviewReason = 'Check-out was recorded, but the linked daily plan could not be finalized automatically.';
-      await Visit.findOneAndUpdate(
-        { _id: data._id, checkOutReviewStatus: { $ne: 'resolved' } },
-        { $set: { checkOutReviewStatus: 'pending', checkOutReviewReason: reviewReason } },
-      );
-      await DailyVisit.findOneAndUpdate(
-        { _id: data.dailyVisit, visit: data._id },
-        { $set: { requiresReview: true } },
-      );
+      console.error(`Visit ${data._id} was checked out, but daily plan ${data.dailyVisit} could not be finalized.`);
       return res.status(409).json({
         success: false,
-        reviewRequired: true,
-        message: `${reviewReason} The next dealer remains locked; ask an authorized Admin/ASM to resolve the visit.`,
+        message: `${reviewReason} Contact support with visit ID ${data._id}.`,
       });
     }
     res.json({
       success: true,
-      message: requiresReview
-        ? 'Check-out recorded as Suspicious because the visit was shorter than the minimum duration. Authorized Admin/ASM review is required before continuing.'
-        : 'GPS check-out verified.',
+      message: 'GPS check-out verified.',
       data,
       minimumDurationMinutes: MIN_VISIT_DURATION_MINUTES,
     });
@@ -801,7 +743,7 @@ exports.resolveCheckOut = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const visit = await Visit.findById(req.params.id);
+    const visit = await Visit.findOne({ _id: req.params.id, archivedAt: null });
     if (!visit) return res.status(404).json({ success: false, message: 'Not found' });
     const updateData = { ...req.body };
     delete updateData.dailyVisitId;
@@ -882,12 +824,12 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const visit = await Visit.findById(req.params.id);
+    const visit = await Visit.findOne({ _id: req.params.id, archivedAt: null });
     if (!visit) return res.status(404).json({ success: false, message: 'Visit not found.' });
-    if (visit.checkInEmployee || visit.dailyVisit || visit.checkOutAttempts?.length) {
-      return res.status(409).json({ success: false, message: 'Recorded GPS visit history cannot be deleted.' });
-    }
-    await visit.deleteOne();
-    res.json({ success: true, message: 'Deleted' });
+    visit.archivedAt = new Date();
+    visit.archivedBy = req.user._id;
+    visit.archiveReason = 'Archived by an Admin from the Visits page.';
+    await visit.save();
+    res.json({ success: true, message: 'Visit archived. Its visit and assignment history has been retained.' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };

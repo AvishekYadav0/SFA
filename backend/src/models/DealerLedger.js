@@ -12,8 +12,8 @@ const dealerLedgerSchema = new mongoose.Schema({
   reference:   String,
   remarks:     String,
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 dealerLedgerSchema.index({ dealer: 1, date: -1 });
 
-module.exports = mongoose.model('DealerLedger', dealerLedgerSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('DealerLedger', dealerLedgerSchema));

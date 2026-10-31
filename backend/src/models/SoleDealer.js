@@ -9,6 +9,6 @@ const soleDealerSchema = new mongoose.Schema({
   address:     { type: String },
   status:      { type: String, enum: ['active', 'inactive'], default: 'active' },
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
-module.exports = mongoose.model('SoleDealer', soleDealerSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('SoleDealer', soleDealerSchema));

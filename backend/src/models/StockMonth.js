@@ -21,9 +21,9 @@ const stockMonthSchema = new mongoose.Schema({
   closedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   reopenedAt: { type: Date, default: null },
   reopenedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 // ── Unique index: one record per month+year ───────────────────────────────────
 stockMonthSchema.index({ month: 1, year: 1 }, { unique: true });
 
-module.exports = mongoose.model('StockMonth', stockMonthSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('StockMonth', stockMonthSchema));

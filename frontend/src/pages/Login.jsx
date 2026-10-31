@@ -5,23 +5,40 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../services';
 import toast from 'react-hot-toast';
 import {
-  FiTrendingUp, FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiUsers, FiUser
+  FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiUsers, FiUser
 } from 'react-icons/fi';
 import { Spinner } from '../components/common/Spinner';
 
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
+  const [companyName, setCompanyName] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('verifiedCompany') || 'null')?.name || '';
+    } catch {
+      return '';
+    }
+  });
   const [role, setRole] = useState('admin');
   const [showPass, setShowPass] = useState(false);
   const [adminLimitReached, setAdminLimitReached] = useState(false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
 
   useEffect(() => {
+    if (!sessionStorage.getItem('companyVerificationToken')) {
+      navigate('/company-verification', { replace: true });
+      return;
+    }
+    try {
+      const verifiedCompany = JSON.parse(sessionStorage.getItem('verifiedCompany') || 'null');
+      setCompanyName(verifiedCompany?.name || '');
+    } catch {
+      setCompanyName('');
+    }
     authService.checkAdmin()
       .then(res => setAdminLimitReached(res.data.adminLimitReached))
       .catch(() => {});
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true });
@@ -37,15 +54,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="auth-page auth-page--login min-h-screen bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
 
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl mb-3">
-            <FiTrendingUp className="text-white text-2xl" />
+          <div className="auth-brand-mark inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-3">
+            <img src="/icons/Screenshot%202026-10-30%20at%209.53.11%20PM.png" alt="SFA logo" className="auth-brand-logo" />
           </div>
           <h1 className="text-2xl font-bold text-white">SFA System</h1>
+          {companyName && <p className="text-blue-100 mt-1 text-sm font-medium">Company Name: {companyName}</p>}
           <p className="text-blue-200 mt-1 text-sm">Sales Force Automation</p>
         </div>
 

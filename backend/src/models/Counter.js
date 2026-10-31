@@ -15,4 +15,4 @@ CounterSchema.statics.getNext = async function(name) {
   return doc.seq;
 };
 
-module.exports = mongoose.model('Counter', CounterSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Counter', CounterSchema));

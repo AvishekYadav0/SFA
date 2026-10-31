@@ -62,7 +62,7 @@ const dailyVisitSchema = new mongoose.Schema({
   statusUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   notes:       { type: String, default: '' },
   assignedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 // One dealer per employee per day; sequence defines the route order.
 dailyVisitSchema.index({ date: 1, staff: 1, dealer: 1 }, { unique: true });
@@ -74,4 +74,4 @@ dailyVisitSchema.index(
   },
 );
 
-module.exports = mongoose.model('DailyVisit', dailyVisitSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('DailyVisit', dailyVisitSchema));

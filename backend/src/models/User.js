@@ -6,6 +6,8 @@ const userSchema = new mongoose.Schema({
   email:       { type: String, required: true, unique: true, lowercase: true },
   password:    { type: String, required: true, select: false },
   role:        { type: String, enum: ['nsm', 'rsm', 'asm', 'se', 'so', 'dealer', 'admin'], required: true },
+  companyId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null, index: true },
+  tenantId:    { type: String, default: null, index: true },
   employeeId:  { type: String, unique: true, sparse: true },
   phone:       String,
   photo:       String,
@@ -27,7 +29,7 @@ const userSchema = new mongoose.Schema({
   status:      { type: String, enum: ['active', 'inactive'], default: 'active' },
   lastLogin:   Date,
   deviceToken: String, // for push notifications
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
@@ -39,4 +41,4 @@ userSchema.methods.matchPassword = function (entered) {
   return bcrypt.compare(entered, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('User', userSchema));

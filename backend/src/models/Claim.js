@@ -16,7 +16,7 @@ const approvalHistorySchema = new mongoose.Schema({
   action:      { type: String, enum: ['Submitted', 'Approved', 'Rejected', 'Paid'], required: true },
   statusAtTime: { type: String, required: true },
   remarks:     String,
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 const claimSchema = new mongoose.Schema({
   claimId:      { type: String, unique: true },
@@ -50,7 +50,7 @@ const claimSchema = new mongoose.Schema({
 claimSchema.pre('save', async function(next) {
   if (!this.isNew) return next();
   try {
-    const Counter = mongoose.model('Counter');
+    const Counter = this.constructor.db.model('Counter');
     const seq = await Counter.getNext('claim');
     this.claimId = `CLM-${String(seq).padStart(6, '0')}`;
     next();
@@ -59,6 +59,6 @@ claimSchema.pre('save', async function(next) {
   }
 });
 
-module.exports = mongoose.model('Claim', claimSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Claim', claimSchema));
 module.exports.CLAIM_TYPES = CLAIM_TYPES;
 module.exports.APPROVAL_STATUSES = APPROVAL_STATUSES;

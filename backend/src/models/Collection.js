@@ -36,7 +36,7 @@ const collectionSchema = new mongoose.Schema({
   verifiedAt:  Date,
 
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+}, { timestamps: true, tenantScoped: true });
 
 collectionSchema.index({ se: 1, date: -1 });
 collectionSchema.index({ dealer: 1 });
@@ -44,10 +44,10 @@ collectionSchema.index({ 'allocations.sale': 1, date: -1 });
 
 collectionSchema.pre('save', async function (next) {
   if (!this.collectionNumber) {
-    const count = await mongoose.model('Collection').countDocuments();
+    const count = await this.constructor.countDocuments();
     this.collectionNumber = `COL-${String(count + 1).padStart(6, '0')}`;
   }
   next();
 });
 
-module.exports = mongoose.model('Collection', collectionSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Collection', collectionSchema));

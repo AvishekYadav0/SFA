@@ -16,6 +16,14 @@ const BackupRun = require('../models/BackupRun');
 const BackupLog = require('../models/BackupLog');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Company = require('../models/Company');
+const {
+  getTenantContext,
+  tenantCollections,
+  tenantFilter,
+  withTenantContext,
+} = require('../utils/tenantContext');
+const { tenantContextFor } = require('../utils/tenantModels');
 
 const BACKEND_ROOT = path.resolve(__dirname, '../..');
 const LATIN_FONT = require.resolve('@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-latin-400-normal.woff');
@@ -118,9 +126,11 @@ const resolveBackupFile = filename => {
 };
 
 const serializeDatabase = async function* () {
-  const db = mongoose.connection.db;
+  const tenant = getTenantContext();
+  const db = tenant?.connection?.db || mongoose.connection.db;
   if (!db) throw new Error('MongoDB is not connected.');
-
+  const scopedCollections = tenant ? tenantCollections() : new Set();
+  const scopedFilter = tenant ? tenantFilter(tenant) : null;
   const collections = await db.listCollections({}, { nameOnly: true }).toArray();
   yield `{"format":"sfa-mongodb-ejson-v1","createdAt":${JSON.stringify(new Date().toISOString())},"collections":{`;
 
@@ -132,7 +142,10 @@ const serializeDatabase = async function* () {
     firstCollection = false;
     yield `${JSON.stringify(name)}:[`;
 
-    const cursor = db.collection(name).find({}).batchSize(500);
+    const filter = !tenant ? {}
+      : name === 'companies' ? { _id: scopedFilter.companyId }
+        : scopedCollections.has(name) ? scopedFilter : { _id: null };
+    const cursor = db.collection(name).find(filter).batchSize(500);
     let firstDocument = true;
     try {
       for await (const document of cursor) {
@@ -578,22 +591,33 @@ const logBackupActivity = async ({
 
 const notifyAdminsBackupFailure = async error => {
   try {
-    const admins = await User.find({ role: 'admin' }).select('_id').lean();
-    if (!admins.length) return;
-    await Notification.insertMany(admins.map(admin => ({
-      user: admin._id,
-      type: 'general',
-      title: 'Database backup failed',
-      message: 'The scheduled database backup failed. Please review backup status and server logs.',
-      link: '/admin/backups',
-    })));
+    const companies = await Company.find({ status: 'active', databaseName: { $exists: true } }).lean();
+    for (const company of companies) {
+      await withTenantContext(tenantContextFor(company), async () => {
+        const admins = await User.find({ role: 'admin' }).select('_id').lean();
+        if (admins.length) {
+          await Notification.insertMany(admins.map(admin => ({
+            user: admin._id,
+            type: 'general',
+            title: 'Database backup failed',
+            message: 'A scheduled database backup failed. Please review backup status and server logs.',
+            link: '/admin/backups',
+          })));
+        }
+      });
+    }
   } catch (notificationError) {
     console.error('Could not notify Admin users about a failed database backup:', safeErrorMessage(notificationError));
   }
   console.error('Scheduled database backup failed:', safeErrorMessage(error));
 };
 
-const createBackup = async ({ type = 'manual', createdBy = null, ipAddress = null } = {}) => {
+const createBackup = async ({
+  type = 'manual',
+  createdBy = null,
+  ipAddress = null,
+  cleanupRetention = true,
+} = {}) => {
   const now = new Date();
   const filename = createFilename(now);
   let backup;
@@ -641,9 +665,11 @@ const createBackup = async ({ type = 'manual', createdBy = null, ipAddress = nul
       status: 'SUCCESS',
       ipAddress,
     });
-    await cleanupExpiredBackups().catch(error => {
-      console.error('Database backup retention cleanup failed:', safeErrorMessage(error));
-    });
+    if (cleanupRetention) {
+      await cleanupExpiredBackups().catch(error => {
+        console.error('Database backup retention cleanup failed:', safeErrorMessage(error));
+      });
+    }
     return backup;
   } catch (error) {
     if (ownsTemporaryFile) await fs.rm(temporaryPath, { force: true }).catch(() => {});
@@ -771,8 +797,22 @@ const startBackupScheduler = async () => {
       }
 
       try {
-        const backup = await createBackup({ type: 'automatic' });
-        run.backup = backup._id;
+        const platformBackup = await createBackup({ type: 'automatic' });
+        run.backup = platformBackup._id;
+        const companies = await Company.find({ status: 'active', databaseName: { $exists: true } }).lean();
+        const failures = [];
+        for (const company of companies) {
+          try {
+            await withTenantContext(tenantContextFor(company), () =>
+              createBackup({ type: 'automatic' })
+            );
+          } catch (error) {
+            failures.push(`${company.name}: ${safeErrorMessage(error)}`);
+          }
+        }
+        if (failures.length) {
+          throw new Error(`Tenant backup failures: ${failures.join('; ')}`);
+        }
         run.status = 'SUCCESS';
         run.completedAt = new Date();
         await run.save();

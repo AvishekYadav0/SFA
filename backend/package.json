@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "migrate:company-databases": "node migrateCompanyDatabases.js",
+    "migrate:tenant-business-indexes": "node migrateTenantBusinessIndexes.js"
   },
   "engines": {
     "node": ">=16.0.0"

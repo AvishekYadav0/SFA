@@ -1,5 +1,8 @@
 const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
+const Company = require('../models/Company');
+const { withTenantContext } = require('../utils/tenantContext');
+const { tenantContextFor } = require('../utils/tenantModels');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -9,11 +12,33 @@ exports.protect = async (req, res, next) => {
   if (!token) return res.status(401).json({ success: false, message: 'Not authorized' });
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-password');
-    if (!req.user) return res.status(401).json({ success: false, message: 'User not found' });
-    next();
-  } catch {
-    res.status(401).json({ success: false, message: 'Token invalid' });
+    if (!decoded.companyId || !decoded.tenantId) {
+      return res.status(401).json({ success: false, message: 'Company verification is required. Please verify your company and sign in again.' });
+    }
+    const company = await Company.findById(decoded.companyId);
+    if (!company || company.status !== 'active' || company.tenantId !== decoded.tenantId) {
+      return res.status(403).json({ success: false, message: 'This company is inactive or its session is no longer valid.' });
+    }
+    const context = tenantContextFor(company);
+    return await withTenantContext(context, async () => {
+      req.user = await User.findById(decoded.id).select('-password');
+      if (!req.user) return res.status(401).json({ success: false, message: 'User not found' });
+      const userCompanyMatches = String(req.user.companyId || '') === String(company._id)
+        || (company.isLegacy && !req.user.companyId);
+      if (!userCompanyMatches || (req.user.tenantId && req.user.tenantId !== company.tenantId)) {
+        return res.status(403).json({ success: false, message: 'This account does not belong to the verified company.' });
+      }
+      req.company = company;
+      req.user.companyName = company.name;
+      return next();
+    });
+  } catch (error) {
+    console.error('Company authentication failed:', error.message);
+    const tokenError = ['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name);
+    res.status(tokenError ? 401 : 503).json({
+      success: false,
+      message: tokenError ? 'Token invalid' : 'Company data is temporarily unavailable.',
+    });
   }
 };
 

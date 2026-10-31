@@ -93,7 +93,10 @@ const visitSchema = new mongoose.Schema({
 
   status:      { type: String, enum: ['checked-in', 'checked-out'], default: 'checked-in' },
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-}, { timestamps: true });
+  archivedAt:  Date,
+  archivedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  archiveReason: String,
+}, { timestamps: true, tenantScoped: true });
 
 visitSchema.index({ se: 1, date: -1 });
 visitSchema.index({ dealer: 1 });
@@ -108,4 +111,4 @@ visitSchema.index(
   },
 );
 
-module.exports = mongoose.model('Visit', visitSchema);
+module.exports = require('../utils/tenantModels').databaseModel(mongoose.model('Visit', visitSchema));
