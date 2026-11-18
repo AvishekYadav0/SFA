@@ -198,6 +198,14 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    if (req.user.role === 'so') {
+      const locationFields = new Set(['latitude', 'longitude', 'geofenceRadius']);
+      const requestedFields = Object.keys(req.body || {});
+      if (!requestedFields.length || requestedFields.some(field => !locationFields.has(field))) {
+        return res.status(403).json({ success: false, message: 'Sales Officers can update only the assigned dealer shop location and geofence radius.' });
+      }
+    }
+
     if (Object.prototype.hasOwnProperty.call(req.body, 'locationVerificationStatus')
       || Object.prototype.hasOwnProperty.call(req.body, 'locationAudit')
       || Object.prototype.hasOwnProperty.call(req.body, 'locationReviewedBy')

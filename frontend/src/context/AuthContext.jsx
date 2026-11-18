@@ -35,8 +35,6 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     localStorage.removeItem('token');
-    sessionStorage.removeItem('companyVerificationToken');
-    sessionStorage.removeItem('verifiedCompany');
     setUser(null);
   }, []);
 

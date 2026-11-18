@@ -182,14 +182,21 @@ export default function Dealers() {
       delete payload.locationReviewedAt;
       delete payload.locationRejectionReason;
       if (modal.data) {
-        const res = await dealerService.update(modal.data._id, payload);
+        const updatePayload = user?.role === 'so'
+          ? {
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            geofenceRadius: payload.geofenceRadius,
+          }
+          : payload;
+        const res = await dealerService.update(modal.data._id, updatePayload);
         // Immediately update local state with returned data (includes recalculated outstanding)
         const updated = res.data.data;
         setAllData(prev => prev.map(d => d._id === updated._id ? updated : d));
       } else {
         await dealerService.create(payload);
       }
-      toast.success(modal.data ? 'Dealer updated!' : 'Dealer added!');
+      toast.success(user?.role === 'so' ? 'Shop location submitted for admin approval.' : modal.data ? 'Dealer updated!' : 'Dealer added!');
       setModal({ open: false, data: null, province: '' });
       fetchAll(); // full refresh to ensure consistency
     } catch (err) { toast.error(err.response?.data?.message || 'Error saving dealer'); }
@@ -367,7 +374,7 @@ export default function Dealers() {
         <DealerModal
           modal={modal} onClose={() => setModal({ open: false, data: null, province: '' })}
           onSubmit={handleSubmit(onSubmit)} onVerifyLocation={handleLocationVerification}
-          isAdmin={user?.role === 'admin'} register={register} getValues={getValues} watch={watch}
+          isAdmin={user?.role === 'admin'} isSalesOfficer={user?.role === 'so'} register={register} getValues={getValues} watch={watch}
           setValue={setValue} errors={errors} isSubmitting={isSubmitting}
         />
         <AssignSOModal
@@ -607,7 +614,7 @@ function LocationVerificationBadge({ status }) {
   return <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>{label}</span>;
 }
 
-function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, register, getValues, watch, setValue, errors, isSubmitting }) {
+function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, isSalesOfficer, register, getValues, watch, setValue, errors, isSubmitting }) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [locationFeedback, setLocationFeedback] = useState(null);
   const [showMap, setShowMap] = useState(false);
@@ -706,9 +713,11 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
 
   return (
     <Modal open={modal.open} onClose={onClose}
-      title={modal.data ? 'Edit Dealer' : 'Add Dealer'} size="md">
+      title={isSalesOfficer ? 'Update Shop Location' : modal.data ? 'Edit Dealer' : 'Add Dealer'} size="md">
       <form onSubmit={onSubmit} className="space-y-4">
 
+        {!isSalesOfficer && (
+          <>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Dealer Name *</label>
@@ -761,11 +770,13 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
           <label className="label">Address</label>
           <input {...register('address')} className="input" placeholder="e.g. New Road, Kathmandu" />
         </div>
+          </>
+        )}
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
           <div className="mb-3">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Dealer Location &amp; GPS Verification</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Add the dealer shop's verified coordinates using GPS or the map.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{isSalesOfficer ? 'Update the assigned shop coordinates using GPS or the map. A location change requires administrator approval.' : "Add the dealer shop's verified coordinates using GPS or the map."}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -873,7 +884,7 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
           )}
         </div>
 
-        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+        {!isSalesOfficer && <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Credit &amp; Payment Terms</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -926,7 +937,7 @@ function DealerModal({ modal, onClose, onSubmit, onVerifyLocation, isAdmin, regi
               </select>
             </div>
           </div>
-        </div>
+        </div>}
 
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>

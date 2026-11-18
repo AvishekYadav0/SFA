@@ -33,6 +33,20 @@ const StockStatus   = lazy(() => import('./pages/StockStatus'));
 const DealerPortal  = lazy(() => import('./pages/DealerPortal'));
 const DealerDetail  = lazy(() => import('./pages/DealerDetail'));
 const DatabaseBackup = lazy(() => import('./pages/DatabaseBackup'));
+const PlatformAdminLogin = lazy(() => import('./pages/PlatformAdminLogin'));
+const PlatformAdminDashboard = lazy(() => import('./pages/PlatformAdminDashboard'));
+const PlatformAdminCompanies = lazy(() => import('./pages/PlatformAdminCompanies'));
+const PlatformAdminCompanyDetails = lazy(() => import('./pages/PlatformAdminCompanyDetails'));
+const PlatformAdminPlans = lazy(() => import('./pages/PlatformAdminPlans'));
+const PlatformAdminSubscriptions = lazy(() => import('./pages/PlatformAdminSubscriptions'));
+const PlatformAdminUsers = lazy(() => import('./pages/PlatformAdminUsers'));
+const PlatformAdminFeatures = lazy(() => import('./pages/PlatformAdminFeatures'));
+const PlatformAdminPayments = lazy(() => import('./pages/PlatformAdminPayments'));
+const PlatformAdminReports = lazy(() => import('./pages/PlatformAdminReports'));
+const PlatformAdminNotifications = lazy(() => import('./pages/PlatformAdminNotifications'));
+const PlatformAdminAuditLogs = lazy(() => import('./pages/PlatformAdminAuditLogs'));
+const PlatformAdminSettings = lazy(() => import('./pages/PlatformAdminSettings'));
+const PlatformAdminLayout = lazy(() => import('./components/platform-admin/PlatformAdminLayout'));
 
 // Legacy pages
 const DailyVisits   = lazy(() => import('./pages/DailyVisits'));
@@ -58,6 +72,11 @@ const RoleRoute = ({ children, roles }) => {
   return children;
 };
 
+const PlatformAdminRoute = ({ children }) => {
+  const hasPlatformToken = Boolean(localStorage.getItem('platformAdminToken'));
+  return hasPlatformToken ? children : <Navigate to="/platform-admin/login" replace />;
+};
+
 const AppRoutes = () => {
   const { user, loading } = useAuth();
   if (loading) return <Loader />;
@@ -71,6 +90,22 @@ const AppRoutes = () => {
         <Route path="/admin-register" element={user ? <Navigate to="/dashboard" replace /> : <AdminRegister />} />
         <Route path="/company-register" element={user ? <Navigate to="/dashboard" replace /> : <CompanyRegister />} />
         <Route path="/company-verification" element={user ? <Navigate to="/dashboard" replace /> : <CompanyVerification />} />
+        <Route path="/platform-admin/login" element={localStorage.getItem('platformAdminToken') ? <Navigate to="/platform-admin/dashboard" replace /> : <PlatformAdminLogin />} />
+
+        <Route element={<PlatformAdminRoute><PlatformAdminLayout /></PlatformAdminRoute>}>
+          <Route path="/platform-admin/dashboard" element={<PlatformAdminDashboard />} />
+          <Route path="/platform-admin/companies" element={<PlatformAdminCompanies />} />
+          <Route path="/platform-admin/companies/:companyId" element={<PlatformAdminCompanyDetails />} />
+          <Route path="/platform-admin/plans" element={<PlatformAdminPlans />} />
+          <Route path="/platform-admin/subscriptions" element={<PlatformAdminSubscriptions />} />
+          <Route path="/platform-admin/users" element={<PlatformAdminUsers />} />
+          <Route path="/platform-admin/features" element={<PlatformAdminFeatures />} />
+          <Route path="/platform-admin/payments" element={<PlatformAdminPayments />} />
+          <Route path="/platform-admin/reports" element={<PlatformAdminReports />} />
+          <Route path="/platform-admin/notifications" element={<PlatformAdminNotifications />} />
+          <Route path="/platform-admin/audit-logs" element={<PlatformAdminAuditLogs />} />
+          <Route path="/platform-admin/settings" element={<PlatformAdminSettings />} />
+        </Route>
 
         {/* Protected */}
         <Route element={<PrivateRoute><AppLayout /></PrivateRoute>}>

@@ -7,6 +7,7 @@ const cors    = require('cors');
 const path    = require('path');
 const connectDB = require('./config/db');
 const { startBackupScheduler } = require('./services/backupService');
+const { startSubscriptionScheduler } = require('./services/subscriptionScheduler');
 
 const app = express();
 
@@ -18,6 +19,8 @@ app.use(express.urlencoded({ extended: true }));
 // ── Routes ────────────────────────────────────────────────────────────────────
 const { collections, visits, dashboard, reports } = require('./routes/combined');
 app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/platform-admin', require('./routes/platformAdmin'));
+app.use('/api/company',      require('./routes/companySubscription'));
 app.use('/api/admin/backups', require('./routes/adminBackups'));
 app.use('/api/users',        require('./routes/users'));
 app.use('/api/dealers',      require('./routes/dealers'));
@@ -77,6 +80,7 @@ function startServer(port, attemptsLeft = MAX_TRIES) {
 
 connectDB()
   .then(startBackupScheduler)
+  .then(startSubscriptionScheduler)
   .then(() => startServer(DEFAULT_PORT))
   .catch(err => {
     console.error('Server startup failed:', err.message);

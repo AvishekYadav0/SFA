@@ -3,6 +3,41 @@ const User = require('../models/User');
 const Company = require('../models/Company');
 const { withTenantContext } = require('../utils/tenantContext');
 const { tenantContextFor } = require('../utils/tenantModels');
+const { normalizeFeatureKeys } = require('../services/platformFeatureCatalog');
+
+const FEATURE_BY_API_PREFIX = new Map([
+  ['/api/dashboard', 'dashboard'],
+  ['/api/dealers', 'dealers'],
+  ['/api/dealer-portal', 'dealer_portal'],
+  ['/api/users', 'team_management'],
+  ['/api/salespersons', 'team_management'],
+  ['/api/products', 'products'],
+  ['/api/orders', 'orders'],
+  ['/api/pipeline', 'pipeline'],
+  ['/api/sales', 'sales'],
+  ['/api/collections', 'collections'],
+  ['/api/collection-plans', 'collection_plans'],
+  ['/api/monthly-planning', 'monthly_planning'],
+  ['/api/stock-status', 'stock_status'],
+  ['/api/daily-visits', 'daily_visits'],
+  ['/api/visits', 'visits'],
+  ['/api/targets', 'targets'],
+  ['/api/reports', 'reports'],
+  ['/api/lifting', 'lifting'],
+  ['/api/claims', 'claims'],
+  ['/api/notifications', 'notifications'],
+  ['/api/profile', 'profile'],
+  ['/api/settings', 'settings'],
+  ['/api/admin/backups', 'database_backup'],
+]);
+
+function featureForRequest(req) {
+  const baseUrl = req.baseUrl || '';
+  for (const [prefix, feature] of FEATURE_BY_API_PREFIX) {
+    if (baseUrl === prefix || baseUrl.startsWith(`${prefix}/`)) return feature;
+  }
+  return null;
+}
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -30,6 +65,33 @@ exports.protect = async (req, res, next) => {
       }
       req.company = company;
       req.user.companyName = company.name;
+      const Subscription = require('../models/Subscription');
+      const subscription = await Subscription.findOne({ companyId: company._id }).lean();
+      if (subscription) {
+        if (subscription.status === 'suspended') {
+          return res.status(403).json({ success: false, code: 'SUBSCRIPTION_SUSPENDED', message: 'This company subscription is suspended.' });
+        }
+        if (!['active', 'past_due'].includes(subscription.status)) {
+          return res.status(403).json({ success: false, code: 'SUBSCRIPTION_INACTIVE', message: 'This company subscription is not active. Contact the platform administrator.' });
+        }
+        if (subscription.expiryDate) {
+          const expiry = new Date(subscription.expiryDate);
+          const graceEnd = new Date(expiry.getTime() + (Number(subscription.gracePeriodDays || 0) * 24 * 60 * 60 * 1000));
+          if (new Date() > graceEnd) {
+            return res.status(403).json({ success: false, code: 'SUBSCRIPTION_EXPIRED', message: 'Your company subscription has expired. Please renew it to continue.' });
+          }
+        }
+      }
+      const feature = featureForRequest(req);
+      if (feature) {
+        if (subscription && !normalizeFeatureKeys(subscription.assignedFeatures || []).includes(feature)) {
+          return res.status(403).json({
+            success: false,
+            code: 'FEATURE_DISABLED',
+            message: `The ${feature} module is not enabled for this company.`,
+          });
+        }
+      }
       return next();
     });
   } catch (error) {
@@ -135,4 +197,43 @@ exports.hierarchyFields = async (creatingUser) => {
 
   // Admin / NSM / RSM / ASM creating on behalf of someone — caller must supply se
   return {};
+};
+
+exports.requireCompanySubscription = async (req, res, next) => {
+  const Subscription = require('../models/Subscription');
+  if (!req.company?._id) {
+    return res.status(401).json({ success: false, message: 'Company context is required.' });
+  }
+
+  const subscription = await Subscription.findOne({ companyId: req.company._id }).lean();
+  if (!subscription) {
+    return res.status(403).json({ success: false, message: 'No subscription is active for this company.' });
+  }
+
+  const now = new Date();
+  const expiresAt = subscription.expiryDate ? new Date(subscription.expiryDate) : null;
+  if (expiresAt && now > expiresAt && subscription.status !== 'active') {
+    return res.status(403).json({ success: false, message: 'Your company subscription has expired. Please renew it to continue.' });
+  }
+
+  if (subscription.status === 'suspended') {
+    return res.status(403).json({ success: false, message: 'Your company subscription is suspended.' });
+  }
+
+  req.subscription = subscription;
+  next();
+};
+
+exports.requireFeatureAccess = (feature) => async (req, res, next) => {
+  const Subscription = require('../models/Subscription');
+  const subscription = await Subscription.findOne({ companyId: req.company._id }).lean();
+  if (!subscription) {
+    return res.status(403).json({ success: false, code: 'SUBSCRIPTION_REQUIRED', message: 'The company subscription is missing or inactive.' });
+  }
+
+  const features = Array.isArray(subscription.assignedFeatures) ? subscription.assignedFeatures : [];
+  if (!features.includes(feature)) {
+    return res.status(403).json({ success: false, code: 'FEATURE_DISABLED', message: `Feature '${feature}' is not enabled for this company.` });
+  }
+  next();
 };

@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "bootstrap:platform-admin": "node scripts/bootstrap-platform-admin.js",
+    "reset:platform-admin-password": "node scripts/reset-platform-admin-password.js",
     "migrate:company-databases": "node migrateCompanyDatabases.js",
     "migrate:tenant-business-indexes": "node migrateTenantBusinessIndexes.js"
   },

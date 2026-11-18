@@ -11,7 +11,7 @@ r.get('/:id/ledger',      c.ledger);
 r.get('/:id',  c.getOne);
 r.patch('/:id/location-verification', authorize('admin'), c.verifyLocation);
 r.post('/',    authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.create);
-r.put('/:id',  authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.update);
+r.put('/:id',  authorize('admin', 'nsm', 'rsm', 'asm', 'se', 'so'), c.update);
 r.delete('/:id', authorize('admin', 'nsm'), c.remove);
 r.put('/:id/assign-so', authorize('admin', 'nsm', 'rsm', 'asm', 'se'), c.assignSO);
 r.put('/:id/link-user', authorize('admin', 'nsm'), c.linkUser);
